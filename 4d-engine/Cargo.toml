@@ -1,0 +1,19 @@
+[package]
+name = "four_d_engine"
+version = "0.2.2"
+edition = "2021"
+description = "True 4D tensor engine for 4DOllama (CPU core + FFI)"
+license = "MIT"
+
+[lib]
+name = "four_d_engine"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[dependencies]
+ndarray = "0.16"
+half = { version = "2.4", features = ["num-traits", "std"] }
+byteorder = "1.5"
+thiserror = "1.0"
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+libc = "0.2"

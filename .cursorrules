@@ -1,0 +1,65 @@
+You are an elite systems engineer and low-level AI runtime expert. Your mission is to build a complete, production-ready, drop-in replacement for Ollama called **4DOllama** (binary name: `4dollama`).
+
+### Core Requirement – "Exactly like Ollama"
+It must be 100% compatible with the current Ollama (as of 2026):
+- Same CLI commands (`4dollama run`, `pull`, `list`, `ps`, `serve`, `create`, `show`, `rm`, `cp`, `export`, `import`, `push`, `stop`, etc.)
+- Same Modelfile syntax and parsing (FROM, TEMPLATE, SYSTEM, PARAMETER, LICENSE, etc.)
+- Same model registry behavior (pulls from registry.ollama.com by default, supports custom registries)
+- Same OpenAI-compatible REST API (`/api/generate`, `/api/chat`, `/api/embeddings`, `/api/create`, `/api/show`, `/api/tags`, `/api/ps`, `/v1/chat/completions`, `/v1/completions`, etc.)
+- Same GGUF model loading support (must be able to pull and run any existing Ollama model like llama3.2, gemma2, phi4, qwen2.5, etc.)
+- Same quantization formats (Q4_0, Q5_K_M, FP16, etc.)
+- Same cross-platform support (macOS, Linux, Windows) with GPU acceleration (CUDA, Metal, Vulkan, ROCm)
+- Same Docker image format and `ollama serve` behavior
+
+The only difference is the inference engine.
+
+### The "True 4D Engine" (non-negotiable)
+Replace the entire llama.cpp / ggml backend with a brand-new **true 4D computational engine** called `4d-engine`.
+
+Key principles of the 4D engine:
+- Every weight tensor, activation, embedding, and attention matrix lives in **4-dimensional space** (x, y, z, w).
+- All linear algebra operations (matmul, attention, RMSNorm, RoPE, SwiGLU, etc.) are redefined as **4D hyper-operations**:
+  - Use quaternion algebra (i, j, k, w) for rotations instead of complex numbers in RoPE.
+  - Matrix multiplications become 4D tensor contractions over the w-dimension (true 4D GEMM).
+  - Attention is computed as 4D spacetime attention (time + 3D spatial dimensions).
+  - Embeddings are projected into a 4D manifold before any computation.
+- The engine must support dynamic conversion: when loading a standard GGUF model, it automatically "lifts" the weights into 4D space (adds a w-dimension initialized via a learned or fractal-based projection).
+- Provide two backends:
+  1. CPU: pure Rust with `ndarray` + custom 4D kernels (or `arrayfire`).
+  2. GPU: CUDA/Metal kernels written in Rust (via `cust` / `metal` crates) or C++/CUDA with Rust FFI.
+- Include a new model format extension `.4dgguf` (backward-compatible with GGUF header) so users can save "natively 4D" models.
+- Bonus: add a `--4d-mode` flag that enables true 4D native training/inference (higher memory but claimed "deeper contextual understanding" and "temporal coherence").
+
+### Technical Stack (must follow)
+- Server & CLI: **Go** (exactly like original Ollama) – copy the folder structure from the official Ollama repo as closely as possible.
+- 4D Engine core: **Rust** (create `4d-engine/` crate) with FFI to Go via `cgo` or `go:embed`.
+- GPU acceleration: CUDA 12+, Metal 3, Vulkan.
+- Use `llama.cpp` only for the initial GGUF parser; immediately lift everything into 4D space.
+- Dependencies: keep the same as Ollama where possible, add `ndarray`, `arrayfire`, `cust`, `metal-rs`, `quaternion` crates, `half`, `rayon`, etc.
+
+### Project Structure (create this exactly)
+
+4dollama/
+├── cmd/4dollama/          # CLI entrypoint (identical to Ollama)
+├── server/                # HTTP + OpenAI compat (identical)
+├── api/                   # types and handlers
+├── types/                 # Modelfile, model structs
+├── 4d-engine/             # ← NEW Rust crate (the heart)
+│   ├── src/
+│   │   ├── lib.rs
+│   │   ├── tensor4d.rs     # 4D tensor + quaternion math
+│   │   ├── ops/            # matmul4d, attention4d, rope4d, etc.
+│   │   ├── gpu/            # CUDA/Metal kernels
+│   │   └── converter/      # GGUF → 4D lift
+│   └── Cargo.toml
+├── llm/                   # wrapper that calls 4d-engine
+├── runner/                # execution logic
+├── Dockerfile
+├── go.mod
+├── README.md
+└── .cursorrules
+
+### Iteration cadence
+After each major module, pause and ask: **Ready for next module?**
+
+Use comments like `// 4D ENGINE NOTE: ...` everywhere the 4D-specific logic lives. Add a `--benchmark-4d` command that compares 4D vs original Ollama speed/quality (when CLI parity exists).

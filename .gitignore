@@ -1,0 +1,24 @@
+# Go
+*.exe
+*.test
+*.out
+vendor/
+
+# Rust
+4d-engine/target/
+**/*.rs.bk
+
+# IDE / OS
+.idea/
+.vscode/
+*.swp
+.DS_Store
+Thumbs.db
+
+# Local / secrets
+.env
+.env.*
+*.local
+
+# Cursor workspace cache (optional)
+.cursor/

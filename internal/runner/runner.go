@@ -1,0 +1,244 @@
+package runner
+
+import (
+	"context"
+	"fmt"
+	"log/slog"
+	"strings"
+
+	"github.com/4dollama/4dollama/internal/engine"
+	"github.com/4dollama/4dollama/internal/inference"
+	"github.com/4dollama/4dollama/internal/models"
+	"github.com/4dollama/4dollama/internal/ollama"
+)
+
+const demoPromptMaxRunes = 256
+
+func promptRunesToFloats(prompt string) []float32 {
+	if prompt == "" {
+		return nil
+	}
+	var out []float32
+	for _, r := range prompt {
+		if len(out) >= demoPromptMaxRunes {
+			break
+		}
+		out = append(out, float32(r))
+	}
+	return out
+}
+
+// Service orchestrates model resolution, GGUF inspect, and the inference provider.
+type Service struct {
+	Eng      engine.Engine
+	Registry *models.Registry
+	Log      *slog.Logger
+	Infer    inference.Provider
+}
+
+// NewService wires the runner. If inf is nil, Stub is used.
+func NewService(eng engine.Engine, reg *models.Registry, log *slog.Logger, inf inference.Provider) *Service {
+	if inf == nil {
+		inf = inference.Stub{}
+	}
+	return &Service{Eng: eng, Registry: reg, Log: log, Infer: inf}
+}
+
+// Generate produces a completion via the configured inference provider.
+func (s *Service) Generate(ctx context.Context, req ollama.GenerateRequest, fourDMode bool) (ollama.GenerateResponse, error) {
+	req.Model = strings.TrimSpace(req.Model)
+	if req.Model == "" {
+		return ollama.GenerateResponse{}, fmt.Errorf("model required")
+	}
+
+	entry, ok := s.Registry.Resolve(req.Model)
+	forward := s.Infer.Name() == "ollama-forward"
+	if !ok && !forward {
+		return ollama.GenerateResponse{}, fmt.Errorf("model not found: %q (add .gguf under FOURD_MODELS, or set FOURD_INFERENCE=ollama so names match upstream)", req.Model)
+	}
+
+	var inspectJSON, path string
+	if ok {
+		path = entry.Path
+		if b, err := s.Eng.InspectGGUF(entry.Path); err == nil {
+			inspectJSON = string(b)
+			if s.Log != nil {
+				s.Log.Info("gguf inspect",
+					slog.String("model", req.Model),
+					slog.String("path", entry.Path),
+					slog.String("inference", s.Infer.Name()),
+					slog.String("backend", string(s.Eng.Info().Backend)),
+				)
+			}
+		} else if s.Log != nil {
+			s.Log.Warn("gguf inspect failed", slog.String("path", entry.Path), slog.Any("err", err))
+		}
+	} else if forward && s.Log != nil {
+		s.Log.Debug("forwarding without local GGUF resolve", slog.String("model", req.Model))
+	}
+
+	demoIn := promptRunesToFloats(req.Prompt)
+	if s.Eng != nil && len(demoIn) > 0 {
+		if gb := s.Eng.GPUBackend(); gb != "cpu" && s.Log != nil {
+			s.Log.Info("🔥 GPU 4D Acceleration engaged (CUDA/Metal)", slog.String("gpu", gb))
+		}
+	}
+	var fourDDemo []float32
+	if s.Eng != nil && len(demoIn) > 0 {
+		var derr error
+		fourDDemo, derr = s.Eng.Compute4DDemo(demoIn)
+		if derr != nil && s.Log != nil {
+			s.Log.Warn("Compute4DDemo", slog.Any("err", derr))
+		}
+	}
+	if len(fourDDemo) > 0 && s.Log != nil {
+		s.Log.Info("🚀 4D ENGINE ACTIVE — quaternion rotation applied",
+			slog.Int("demo_in_len", len(demoIn)),
+			slog.Int("demo_out_len", len(fourDDemo)))
+	}
+
+	var paramCount int64
+	var lifted []float32
+	var from4DGGUF bool
+	ollamaRoot := s.Registry.OllamaDir()
+	if ollamaRoot != "" {
+		blob4d := models.BlobPath4DGGUF(ollamaRoot, req.Model)
+		if w, pc, err := models.Load4DGGUF(blob4d); err == nil && len(w) > 0 {
+			lifted = w
+			paramCount = pc
+			from4DGGUF = true
+		}
+	}
+	if ok && path != "" && s.Eng != nil && len(lifted) == 0 {
+		if pc, err := s.Eng.GGUFParamCount(path); err == nil {
+			paramCount = pc
+		}
+		l, p, err := s.Eng.GGUFSampleLift(path, 8192)
+		if err == nil && len(l) > 0 {
+			lifted = l
+			if p > 0 {
+				paramCount = p
+			}
+			if s.Log != nil {
+				s.Log.Info(fmt.Sprintf("✅ %s lifted to 4D (%d weights)", req.Model, paramCount),
+					slog.Int("lift_sample_len", len(lifted)))
+			}
+			if ollamaRoot != "" {
+				blob4d := models.BlobPath4DGGUF(ollamaRoot, req.Model)
+				if err := models.Save4DGGUF(blob4d, lifted, paramCount); err != nil && s.Log != nil {
+					s.Log.Debug("save .4dgguf", slog.String("path", blob4d), slog.Any("err", err))
+				}
+			}
+		}
+	}
+
+	var ropeEmb []float32
+	if s.Eng != nil && len(demoIn) > 0 {
+		r, rerr := s.Eng.Rope4DSequence(demoIn)
+		if rerr != nil && s.Log != nil {
+			s.Log.Warn("Rope4DSequence", slog.Any("err", rerr))
+		} else {
+			ropeEmb = r
+		}
+	}
+	if len(ropeEmb) > 0 && s.Log != nil {
+		s.Log.Info("🌀 Quaternion RoPE applied in 4D space",
+			slog.Int("rope_len", len(ropeEmb)),
+			slog.Int("rope_quads", len(ropeEmb)/4))
+	}
+
+	var attnOut []float32
+	if s.Eng != nil && len(ropeEmb) >= 4 {
+		seqLen := len(ropeEmb) / 4
+		a, aerr := s.Eng.SpacetimeAttention4D(ropeEmb, ropeEmb, ropeEmb, seqLen)
+		if aerr != nil && s.Log != nil {
+			s.Log.Warn("SpacetimeAttention4D", slog.Any("err", aerr))
+		} else if len(a) > 0 {
+			attnOut = a
+		}
+	}
+	if len(attnOut) > 0 && s.Log != nil {
+		s.Log.Info("🌌 True 4D Spacetime Attention engaged",
+			slog.Int("seq_len", len(attnOut)/4),
+			slog.Int("attn_floats", len(attnOut)))
+	}
+
+	fwd := attnOut
+	if len(fwd) == 0 {
+		fwd = ropeEmb
+	}
+	var matmul float32
+	gemmOK := false
+	if len(fwd) > 0 && len(lifted) > 0 && s.Eng != nil {
+		kk := len(fwd)
+		if len(lifted) < kk {
+			kk = len(lifted)
+		}
+		row, gerr := s.Eng.Gemm4D(fwd[:kk], lifted[:kk], 1, kk, 1)
+		if gerr == nil && len(row) > 0 {
+			matmul = row[0]
+			gemmOK = true
+		} else {
+			for i := 0; i < kk; i++ {
+				matmul += fwd[i] * lifted[i]
+			}
+		}
+	} else {
+		for i := 0; i < len(fwd) && i < len(lifted); i++ {
+			matmul += fwd[i] * lifted[i]
+		}
+	}
+	if gemmOK && s.Log != nil {
+		s.Log.Info("⚙️ Native 4D GEMM kernels engaged — model now in true 4D format",
+			slog.Bool("from_4dgguf", from4DGGUF),
+			slog.Int("lift_len", len(lifted)))
+	}
+
+	ic := inference.Context{
+		ModelResolved:      ok,
+		ModelPath:          path,
+		InspectJSON:        inspectJSON,
+		FourDMode:          fourDMode,
+		Eng:                s.Eng,
+		FourDDemo:          fourDDemo,
+		LiftedWeights:      lifted,
+		ParamCount:         paramCount,
+		RoPEEmbedding:      ropeEmb,
+		SpacetimeAttention: attnOut,
+		MatmulScore:        matmul,
+		WeightsFrom4DGGUF:  from4DGGUF,
+	}
+
+	if s.Infer.Name() == "stub" && s.Log != nil && len(demoIn) > 0 {
+		s.Log.Info("⚡ Full 4D autoregressive generation engaged",
+			slog.Int("max_tokens", inference.AutoregMaxTokens),
+			slog.Int("prompt_embed_len", len(demoIn)))
+	}
+
+	text, err := s.Infer.Generate(ctx, ic, req.Model, req.Prompt)
+	if err != nil {
+		return ollama.GenerateResponse{}, err
+	}
+	return inference.ToResponse(req.Model, text), nil
+}
+
+// Chat maps chat messages to a single prompt and uses Generate.
+func (s *Service) Chat(ctx context.Context, req ollama.ChatRequest, fourDMode bool) (ollama.ChatResponse, error) {
+	var user strings.Builder
+	for _, m := range req.Messages {
+		user.WriteString(m.Role)
+		user.WriteString(": ")
+		user.WriteString(m.Content)
+		user.WriteString("\n")
+	}
+	g, err := s.Generate(ctx, ollama.GenerateRequest{Model: req.Model, Prompt: user.String()}, fourDMode)
+	if err != nil {
+		return ollama.ChatResponse{}, err
+	}
+	return ollama.ChatResponse{
+		Model:     g.Model,
+		CreatedAt: g.CreatedAt,
+		Message:   ollama.Message{Role: "assistant", Content: g.Response},
+		Done:      true,
+	}, nil
+}

@@ -1,0 +1,35 @@
+name: ci
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+    branches: [main, master]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.22"
+
+      - name: Install C toolchain (cgo)
+        run: sudo apt-get update && sudo apt-get install -y gcc libc6-dev
+
+      - name: Rust — test + release
+        working-directory: 4d-engine
+        run: |
+          cargo test
+          cargo build --release
+
+      - name: Go — test (stub / no cgo)
+        run: CGO_ENABLED=0 go test ./...
+
+      - name: Go — build (cgo + four_d_engine)
+        env:
+          CGO_ENABLED: "1"
+          LD_LIBRARY_PATH: ${{ github.workspace }}/4d-engine/target/release
+        run: go build -o 4dollama ./cmd/4dollama

@@ -1,0 +1,22 @@
+services:
+  fourdollama:
+    build: .
+    image: fourdollama:latest
+    ports:
+      - "13373:13373"
+    environment:
+      FOURD_PORT: "13373"
+      FOURD_LOG_LEVEL: info
+      FOURD_LOG_JSON: "true"
+      FOURD_MODELS: /models
+    volumes:
+      - fourd_models:/models
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:13373/healthz"]
+      interval: 30s
+      timeout: 3s
+      retries: 3
+      start_period: 10s
+
+volumes:
+  fourd_models:
