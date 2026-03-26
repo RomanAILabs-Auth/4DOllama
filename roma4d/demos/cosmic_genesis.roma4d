@@ -1,0 +1,39 @@
+# cosmic_genesis.roma4d — valid Roma4D (Cl(4,0) worldtube + par evolution)
+# Run from anywhere after:  .\scripts\Install-R4dUserEnvironment.ps1  (sets PATH + R4D_PKG_ROOT)
+#   r4d run C:\full\path\to\cosmic_genesis.roma4d
+# Or from repo: r4d run demos\cosmic_genesis.roma4d
+
+def main() -> None:
+    N: int = 1_000_000
+    genesis_rot: rotor = rotor(angle=0.0001, plane="xy")
+
+    cosmos: list[vec4] = [vec4(x=0.001, y=0.001, z=0.001, w=1.0) for _ in range(N)]
+
+    _tau: time = t
+    _seed: vec4 = cosmos[0] @ t
+    _ = _seed
+
+    print("")
+    print("=============================================================")
+    print("          ROMA4D — COSMIC GENESIS")
+    print("          The Birth of a Universe (compile-time spacetime)")
+    print("=============================================================")
+    print("")
+    print("In the beginning, there was only the void...")
+    print("")
+    print("Primordial particles (list[vec4]) evolving under one rotor sweep.")
+    print("")
+
+    spacetime:
+        par for p in cosmos:
+            p = p * genesis_rot
+
+    print("")
+    print("The universe has been born (one evolution step over all chronons).")
+    print("Roma4D — Understand the Universe. Program in four dimensions.")
+    print("")
+    print("=============================================================")
+    print("          End of Cosmic Genesis transmission")
+    print("=============================================================")
+    print("")
+    return None

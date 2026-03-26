@@ -57,7 +57,7 @@ If you think in **columns of data**, **time-indexed values**, and **parallel tra
 - **Output:** Native executable (Windows: `.exe`). Link step may compile and link `rt/roma4d_rt.c` for runtime symbols (`print`, `vec4`, `Particle`, etc.).
 - **Backend:** `[build] backend = "llvm"` in `roma4d.toml`. CUDA / GPU paths are roadmap; some MIR metadata exists for GPU-oriented `spacetime` + `par` regions.
 
-**You must run from a tree that contains `roma4d.toml`:** The driver walks **upward** from the source file’s directory until it finds `roma4d.toml`. That directory is the **package root** (`pkgRoot`).
+**Package root:** The driver walks **upward** from the source file’s directory until it finds `roma4d.toml`. If none is found, it uses **`R4D_PKG_ROOT`** or **`ROMA4D_HOME`** when that directory contains `roma4d.toml` (see §3 — run sketches from anywhere). That resolved directory is **`pkgRoot`**.
 
 ---
 
@@ -104,6 +104,41 @@ roma4d/
 **PowerShell note (Windows):** When pasting commands, **do not** paste the `PS C:\...>` prompt. On some systems `PS` is an alias and breaks the line.
 
 **Recommended Windows workflow:** From `roma4d/`, use `.\r4d.ps1` — it rebuilds `r4d.exe` into `GOPATH\bin` and prepends PATH so you always use **this** tree’s compiler.
+
+### Run `r4d` from any directory (Windows)
+
+1. **One-time:** From the `roma4d/` repo root, run:
+
+   ```powershell
+   .\scripts\Install-R4dUserEnvironment.ps1
+   ```
+
+   This **`go install`s** `r4d` / `roma4d` into **`%GOPATH%\bin`**, appends that folder to your **user** `PATH`, and sets **`R4D_PKG_ROOT`** to this repo root (the directory that contains `roma4d.toml`).
+
+2. **Open a new PowerShell window** (so PATH and env vars reload).
+
+3. **Run a file with an absolute path** from anywhere:
+
+   ```powershell
+   r4d run C:\Users\You\Desktop\4DEngine\roma4d\demos\cosmic_genesis.roma4d
+   ```
+
+   Or keep sketches under `Desktop\` and still compile them:
+
+   ```powershell
+   r4d run C:\Users\You\Desktop\my_sketch.roma4d
+   ```
+
+   Imports such as `from libgeo import ...` resolve under **`R4D_PKG_ROOT`**, not under the sketch’s folder.
+
+**Environment variables (any OS):**
+
+| Variable | Purpose |
+|----------|---------|
+| `R4D_PKG_ROOT` | Fallback package root if `roma4d.toml` is not found above the `.roma4d` file path. |
+| `ROMA4D_HOME` | Same as `R4D_PKG_ROOT` (either may be set). |
+
+**Relative paths:** `r4d run demos\foo.roma4d` is resolved from your **current working directory**. If you are in `Desktop` and `demos\` does not exist there, create it or pass a **full path** to the file.
 
 ---
 
@@ -411,8 +446,9 @@ Mirrors the same failure block to **stderr** immediately.
 
 ### 17.3 “`roma4d.toml` not found”
 
-- Run **`r4d`** with a path to a file **inside** the tree that contains `roma4d.toml`.
-- Or `cd` into `roma4d/` (this repo) before `r4d run examples/...`.
+- Pass a **full path** to a `.roma4d` file that lives **under** a directory tree containing `roma4d.toml`, **or**
+- Set **`R4D_PKG_ROOT`** (or **`ROMA4D_HOME`**) to the folder that **contains** `roma4d.toml`, then run `r4d run C:\anywhere\sketch.roma4d`.
+- **Windows:** Run **`.\scripts\Install-R4dUserEnvironment.ps1`** once (see §3) to set user **`R4D_PKG_ROOT`** and put **`r4d`** on PATH.
 
 ### 17.4 Clang not found
 

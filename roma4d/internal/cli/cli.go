@@ -60,8 +60,11 @@ Examples:
 PowerShell: type only the command line, not the leading "PS C:\...>" prompt
 (PS is an alias for Get-Process and will break pasted lines).
 
-Use a path to a real .roma4d file inside a folder tree that contains roma4d.toml
-(e.g. cd to your Roma4D clone first, then: r4d run examples\hello_4d.roma4d).
+The source file's directory tree must contain roma4d.toml (walk upward from the file),
+unless you set R4D_PKG_ROOT or ROMA4D_HOME to your Roma4D root (folder with roma4d.toml).
+Then you can run: r4d run C:\anywhere\my.roma4d
+
+Windows one-shot setup (User PATH + R4D_PKG_ROOT):  .\scripts\Install-R4dUserEnvironment.ps1
 `)
 }
 
@@ -125,10 +128,25 @@ func findPkgRoot(from string) (string, error) {
 		}
 		parent := filepath.Dir(dir)
 		if parent == dir {
-			return "", fmt.Errorf("roma4d.toml not found above %s\nhint: run from inside the Roma4D project, or pass the full path to examples\\hello_4d.roma4d under that tree", from)
+			break
 		}
 		dir = parent
 	}
+	for _, key := range []string{"R4D_PKG_ROOT", "ROMA4D_HOME"} {
+		raw := strings.TrimSpace(os.Getenv(key))
+		if raw == "" {
+			continue
+		}
+		root, err := filepath.Abs(raw)
+		if err != nil {
+			continue
+		}
+		toml := filepath.Join(root, "roma4d.toml")
+		if st, err := os.Stat(toml); err == nil && !st.IsDir() {
+			return root, nil
+		}
+	}
+	return "", fmt.Errorf("roma4d.toml not found above %s\nhint: place the .roma4d file under your Roma4D clone, or set R4D_PKG_ROOT (or ROMA4D_HOME) to the folder that contains roma4d.toml\nWindows: .\\scripts\\Install-R4dUserEnvironment.ps1 adds Go bin to PATH and sets R4D_PKG_ROOT", from)
 }
 
 func cmdBuild(argv0 string, args []string) int {

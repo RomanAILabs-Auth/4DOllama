@@ -68,6 +68,8 @@ You should see **`r4d run: passed.`** (exit code **42** is intentional for `min_
 4. If `r4d` is shadowed by another binary, prepend Go’s bin:  
    `$env:Path = "$(go env GOPATH)\bin;$env:Path"`
 
+5. **Use `r4d` from any folder:** run **`.\scripts\Install-R4dUserEnvironment.ps1`** once, then open a new terminal. That adds `%GOPATH%\bin` to your user PATH and sets **`R4D_PKG_ROOT`** so `r4d run C:\path\to\any.roma4d` works outside the repo. See **`docs/Roma4D_Guide.md`** §3.
+
 **Note:** The driver uses **`-target x86_64-pc-windows-gnu`** (or arm/i686 variants) so you are **not** forced to install Visual Studio’s MSVC libs. Preferring MSVC would require changing the driver in `src/compiler/llvm_link.go`.
 
 ### macOS
