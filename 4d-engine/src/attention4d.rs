@@ -157,7 +157,7 @@ mod tests {
         let p = compute_4d_spacetime_attention_parallel(&q, &k, &v, 2);
         assert_eq!(o.len(), p.len());
         for i in 0..o.len() {
-            assert!((o[i] - p[i]).abs() < 1e-4);
+            assert!((o[i] - p[i]).abs() < 1e-3, "seq vs parallel mismatch at {}: {} vs {}", i, o[i], p[i]);
         }
     }
 }

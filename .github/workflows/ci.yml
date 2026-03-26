@@ -1,5 +1,10 @@
 name: ci
 
+# One run per branch at a time — avoids dozens of failure emails when pushing many commits quickly.
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 on:
   push:
     branches: [main, master]
@@ -8,22 +13,29 @@ on:
 
 jobs:
   build:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
+
       - uses: dtolnay/rust-toolchain@stable
+
       - uses: actions/setup-go@v5
         with:
           go-version: "1.22"
 
-      - name: Install C toolchain (cgo)
-        run: sudo apt-get update && sudo apt-get install -y gcc libc6-dev
+      - name: Install build deps (cgo + link four_d_engine)
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential pkg-config
 
       - name: Rust — test + release
         working-directory: 4d-engine
+        env:
+          # CI runners have no GPU; keep backend deterministic (matches Dockerfile).
+          FOURD_GPU: cpu
         run: |
-          cargo test
-          cargo build --release
+          cargo test --locked --verbose
+          cargo build --locked --release --verbose
 
       - name: Go — test (stub / no cgo)
         run: CGO_ENABLED=0 go test ./...
@@ -31,5 +43,7 @@ jobs:
       - name: Go — build (cgo + four_d_engine)
         env:
           CGO_ENABLED: "1"
+          # Append to #cgo LDFLAGS in internal/engine: helps Ubuntu find pthread/dl when linking the Rust cdylib.
+          CGO_LDFLAGS: "-L${{ github.workspace }}/4d-engine/target/release -lfour_d_engine -lm -ldl -lpthread"
           LD_LIBRARY_PATH: ${{ github.workspace }}/4d-engine/target/release
         run: go build -o 4dollama ./cmd/4dollama
