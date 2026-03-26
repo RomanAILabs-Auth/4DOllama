@@ -13,11 +13,29 @@ from typing import Annotated, Any, Optional
 
 import typer
 
+from fourdollama import __version__
 from fourdollama.config import DEFAULT_PORT, Settings
 from fourdollama.engine import ensure_model, stream_engine
 from fourdollama.registry import load_registry, normalize_model_name, remove_model
 
-app = typer.Typer(no_args_is_help=True, add_completion=False, help="4DOllama — Ollama-shaped CLI over Roma4D (r4d).")
+app = typer.Typer(no_args_is_help=True, add_completion=False, help="4dollama — Ollama-like CLI; Roma4D (r4d) engine. Default API :13377 (not Ollama :11434).")
+
+
+def _http_base(s: Settings) -> str:
+    h = s.host
+    if h in ("0.0.0.0", "::"):
+        h = "127.0.0.1"
+    return f"http://{h}:{s.port}"
+
+
+def _http_json(method: str, path: str, settings: Settings, body: dict[str, Any] | None = None) -> Any:
+    url = _http_base(settings) + path
+    data = json.dumps(body).encode("utf-8") if body is not None else None
+    req = urllib.request.Request(url, data=data, method=method)
+    if body is not None:
+        req.add_header("Content-Type", "application/json")
+    with urllib.request.urlopen(req, timeout=settings.request_timeout_sec) as resp:
+        return json.loads(resp.read().decode("utf-8", errors="replace"))
 
 
 def _try_uvloop() -> None:
@@ -40,13 +58,63 @@ def cmd_serve(
     _try_uvloop()
     import uvicorn
 
+    print(f'4dollama: listening on http://{h}:{p} (version {__version__}, r4d bridge)', file=sys.stderr)
     uvicorn.run(
         "fourdollama.server:app",
         host=h,
         port=p,
         log_level="info",
         loop="auto",
+        access_log=False,
+        use_colors=False,
     )
+
+
+@app.command("version")
+def cmd_version() -> None:
+    """Print version (same idea as `ollama version`)."""
+    typer.echo(__version__)
+
+
+@app.command("ps")
+def cmd_ps() -> None:
+    """List running models (Ollama-shaped; empty when nothing is loaded)."""
+    s = Settings.load()
+    try:
+        out = _http_json("GET", "/api/ps", s)
+    except urllib.error.URLError as e:
+        print(f"4dollama ps: {e}  (start server: 4dollama serve)", file=sys.stderr)
+        raise typer.Exit(1) from e
+    models = out.get("models") or []
+    typer.echo("NAME    ID    SIZE    PROCESSOR    UNTIL")
+    for m in models:
+        typer.echo(f"{m!s}")
+
+
+@app.command("pull")
+def cmd_pull(
+    model: str = typer.Argument(..., help="model name (GGUF pull not in Python bridge)"),
+) -> None:
+    """GGUF registry pull lives in Ollama or the Go 4DEngine binary; this Python CLI drives r4d only."""
+    typer.echo(
+        "4dollama (Python): no GGUF pull here. Use:  `ollama pull " + model + "`  for weights, "
+        "or build the Go `4dollama` from 4DEngine for integrated pull. Roma4D runs via r4d.exe.",
+        err=True,
+    )
+    raise typer.Exit(2)
+
+
+@app.command("show")
+def cmd_show(
+    model: str = typer.Argument(..., help="model name"),
+) -> None:
+    s = Settings.load()
+    try:
+        out = _http_json("POST", "/api/show", s, {"model": model})
+    except urllib.error.URLError as e:
+        print(f"4dollama show: {e}  (start server: 4dollama serve)", file=sys.stderr)
+        raise typer.Exit(1) from e
+    typer.echo(json.dumps(out, indent=2))
 
 
 @app.command("list")

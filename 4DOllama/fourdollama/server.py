@@ -51,6 +51,11 @@ def create_app() -> FastAPI:
         models = [ModelTag(**m.as_tag()) for m in reg.values()]
         return TagsResponse(models=models)
 
+    @app.get("/api/ps")
+    async def api_ps() -> dict[str, Any]:
+        # Ollama-shaped: running models (none for static r4d bridge).
+        return {"models": []}
+
     @app.post("/api/show")
     async def api_show(body: ShowRequest) -> dict[str, Any]:
         key = _canonical_model(body.model)

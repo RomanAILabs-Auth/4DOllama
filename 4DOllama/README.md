@@ -11,6 +11,16 @@ Ollama-shaped REST + CLI over **Roma4D** (`r4d`). Default bind: **127.0.0.1:1337
 
 Keep **`FOURDOLLAMA_PORT` unset** (or explicitly `13377`) so both can run at once. Only change the port if you intentionally replace Ollama on the same socket.
 
+### Wrong UI (pink `4dollama · … · chat`, duplicate “Message… Ollama-style”)
+
+That screen is from an **old Go `4dollama.exe`** (Bubble Tea), which is **removed in source**. You are still running a stale binary (often `%USERPROFILE%\go\bin\4dollama.exe` or an old copy on `PATH`).
+
+1. In PowerShell: `Get-Command 4dollama -All` (or `where.exe 4dollama`).
+2. **Prefer this repo’s Python CLI** (plain `>>>` only, no dashboard):  
+   `python -m fourdollama run qwen2.5`  
+   after `pip install -e` from `4DOllama/`.
+3. Or **rebuild** Go from an updated clone: `go build -o 4dollama.exe ./cmd/4dollama` and replace the exe you actually run.
+
 ```powershell
 cd 4DOllama
 # Use the SAME Python as `quantum_win` (or your venv):
