@@ -77,13 +77,17 @@ func cmdDoctor(log *slog.Logger) int {
 	resp.Body.Close()
 	fmt.Printf("\n✓ API healthy: %s\n", base)
 
+	if !strings.EqualFold(cfg.InferenceMode, "ollama") {
+		fmt.Println()
+		fmt.Println("✓ Inference: native four_d_engine (FOURD_INFERENCE=stub default) — pulled GGUF is decoded on the 4D path.")
+	}
 	if strings.EqualFold(cfg.InferenceMode, "ollama") && cfg.OllamaHost != "" {
 		oh := strings.TrimSuffix(cfg.OllamaHost, "/")
 		if r, err := client.Get(oh + "/api/tags"); err == nil {
 			r.Body.Close()
-			fmt.Printf("✓ Ollama reachable at OLLAMA_HOST (real model completions)\n")
+			fmt.Printf("✓ Hybrid: Ollama reachable at OLLAMA_HOST (FOURD_INFERENCE=ollama)\n")
 		} else {
-			fmt.Printf("✗ Ollama not reachable at %s - start `ollama serve` or set FOURD_INFERENCE=stub for demo output only\n", oh)
+			fmt.Printf("✗ OLLAMA_HOST not reachable at %s — start `ollama serve` or unset hybrid (default native 4D)\n", oh)
 		}
 	}
 

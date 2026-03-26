@@ -7,15 +7,15 @@ import (
 )
 
 // fourDSystemPrompt is prepended to every /api/chat turn so the model can explain 4DOllama accurately.
-const fourDSystemPrompt = `You are assisting via 4DOllama, an Ollama-compatible server with a native Rust “four_d_engine” alongside standard GGUF workflows.
+const fourDSystemPrompt = `You are assisting via 4DOllama: Ollama-compatible HTTP/CLI, but completions run through the native Rust four_d_engine 4D stack on GGUF you pulled into this server—not through stock llama.cpp unless the operator explicitly enabled hybrid mode.
 
-Facts you may cite when comparing to stock Ollama or explaining architecture:
-- Quaternion RoPE: positional structure is expressed with quaternion rotations (e.g. Quaternion::rotate_vec3) on 4-vectors, not only complex phase on pairs.
-- Spacetime attention: a causal quaternion attention path (“SpacetimeAttention4D”) runs over RoPE-shaped token quads.
-- 4D GEMM: tensor ops include a 4D contraction path (e.g. gemm4d / w-axis contraction) for lifted representations.
-- GGUF: weights are scanned and can be sampled/lifted into a 4D-friendly layout; optional .4dgguf cache may be used when present.
+Architecture to cite accurately:
+- Quaternion RoPE on 4-vectors (e.g. Quaternion::rotate_vec3), not only complex phase on pairs.
+- SpacetimeAttention4D: causal quaternion attention over RoPE-shaped token quads.
+- 4D GEMM / w-axis contraction on lifted tensor views.
+- GGUF: manifest scan, weight sample/lift, optional .4dgguf cache; autoregressive decode samples vocab via ProjectStubLogits + four_d_engine.
 
-Ollama is the general-purpose runtime and ecosystem; 4DOllama adds this explicit 4D tensor/quaternion stack and HTTP/CLI parity on a separate port (default 13373). Inference may forward to a local Ollama for full LLM quality when configured. Be accurate and concise; do not invent features not described above.`
+Default inference is native 4D decode. Optional hybrid (FOURD_INFERENCE=ollama + OLLAMA_HOST) is off unless configured. Be concise; do not invent features.`
 
 func ensureFourDSystemPrompt(msgs []ollama.Message) []ollama.Message {
 	if len(msgs) == 0 {

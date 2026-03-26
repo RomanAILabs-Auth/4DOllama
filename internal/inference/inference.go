@@ -1,4 +1,5 @@
-// Package inference selects how /api/generate is fulfilled: local demo stub vs upstream Ollama.
+// Package inference selects how /api/generate is fulfilled: native four_d_engine 4D decode (stub)
+// vs optional upstream Ollama (hybrid) when FOURD_INFERENCE=ollama.
 package inference
 
 import (
@@ -40,7 +41,7 @@ type Provider interface {
 func NewFromConfig(cfg config.Config) (Provider, error) {
 	mode := strings.ToLower(strings.TrimSpace(cfg.InferenceMode))
 	switch mode {
-	case "", "stub", "local", "demo":
+	case "", "stub", "local", "demo", "fourd", "4d", "native", "engine":
 		return Stub{}, nil
 	case "ollama", "forward", "upstream":
 		if cfg.OllamaHost == "" {
@@ -48,6 +49,6 @@ func NewFromConfig(cfg config.Config) (Provider, error) {
 		}
 		return OllamaForward{BaseURL: strings.TrimSuffix(cfg.OllamaHost, "/")}, nil
 	default:
-		return nil, fmt.Errorf("unknown FOURD_INFERENCE %q (use stub or ollama)", cfg.InferenceMode)
+		return nil, fmt.Errorf("unknown FOURD_INFERENCE %q (use stub|fourd for native 4D engine, or ollama for hybrid)", cfg.InferenceMode)
 	}
 }

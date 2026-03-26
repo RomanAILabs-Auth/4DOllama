@@ -27,7 +27,7 @@ type Config struct {
 	OllamaModels      string // ~/.ollama/models — manifests + blobs
 	ShareOllamaBlobs  bool   // list/resolve/pull reuse Ollama's blob store
 	DefaultTestModel  string // hint only (e.g. qwen2.5) — docs / install messaging
-	InferenceMode     string // stub | ollama — see internal/inference
+	InferenceMode     string // stub (native four_d_engine 4D decode) | ollama (optional upstream hybrid)
 	StreamChunkMs     int    // artificial delay between NDJSON chunks (0 = none)
 }
 
@@ -83,12 +83,9 @@ func Load() Config {
 	ollamaHost := strings.TrimSuffix(getenv("OLLAMA_HOST", ""), "/")
 	inf := strings.TrimSpace(os.Getenv("FOURD_INFERENCE"))
 	if inf == "" {
-		// Real LLM output requires upstream Ollama unless user forces stub-only.
-		if ollamaHost != "" {
-			inf = "ollama"
-		} else {
-			inf = "stub"
-		}
+		// Default: native four_d_engine 4D autoregressive decode on pulled GGUF (no hybrid).
+		// Opt-in to upstream llama.cpp via Ollama: FOURD_INFERENCE=ollama and OLLAMA_HOST=...
+		inf = "stub"
 	}
 	logLvl := strings.TrimSpace(os.Getenv("FOURD_LOG_LEVEL"))
 	if logLvl == "" {

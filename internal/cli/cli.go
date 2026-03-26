@@ -49,7 +49,7 @@ Global flags:
 
 Environment:
   FOURD_HOST, FOURD_PORT (default 13373), FOURD_MODELS, FOURD_LOG_LEVEL (or LOG_LEVEL), FOURD_LOG_JSON
-  FOURD_INFERENCE — ollama when OLLAMA_HOST is set, else stub; set stub explicitly for demo tokens only
+  FOURD_INFERENCE — stub|fourd|native (default): GGUF + four_d_engine 4D decode only. ollama: hybrid via OLLAMA_HOST (explicit opt-in)
   FOURD_STREAM_CHUNK_MS — optional delay between streamed NDJSON chunks (default 0; smoother perceived streaming)
   OLLAMA_HOST, OLLAMA_REGISTRY, OLLAMA_MODELS
   FOURD_SHARE_OLLAMA (default true) — list/resolve/pull reuse ~/.ollama/models blobs

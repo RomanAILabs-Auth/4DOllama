@@ -128,7 +128,8 @@ New-Item -ItemType Directory -Force -Path $modelsDir | Out-Null
 [Environment]::SetEnvironmentVariable("FOURD_DEFAULT_MODEL", "qwen2.5", $target)
 [Environment]::SetEnvironmentVariable("FOURD_PORT", "13373", $target)
 [Environment]::SetEnvironmentVariable("OLLAMA_HOST", "http://127.0.0.1:11434", $target)
-[Environment]::SetEnvironmentVariable("FOURD_INFERENCE", "ollama", $target)
+# Native four_d_engine path (GGUF via 4dollama). Set FOURD_INFERENCE=ollama only if you want hybrid.
+[Environment]::SetEnvironmentVariable("FOURD_INFERENCE", "stub", $target)
 [Environment]::SetEnvironmentVariable("FOURD_REPO", $root, $target)
 
 $hasAccel = $false
@@ -159,7 +160,7 @@ $env:OLLAMA_MODELS = $ollamaModels
 $env:FOURD_SHARE_OLLAMA = "true"
 $env:FOURD_PORT = "13373"
 $env:OLLAMA_HOST = "http://127.0.0.1:11434"
-$env:FOURD_INFERENCE = "ollama"
+$env:FOURD_INFERENCE = "stub"
 $env:FOURD_REPO = $root
 
 function script:Invoke-FourdMain {

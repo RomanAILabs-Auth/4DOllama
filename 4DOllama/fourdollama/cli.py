@@ -93,12 +93,15 @@ def cmd_ps() -> None:
 
 @app.command("pull")
 def cmd_pull(
-    model: str = typer.Argument(..., help="model name (GGUF pull not in Python bridge)"),
+    model: str = typer.Argument(..., help="model name"),
 ) -> None:
-    """GGUF registry pull lives in Ollama or the Go 4DEngine binary; this Python CLI drives r4d only."""
+    """GGUF pull + native four_d_engine decode: use the Go `4dollama` from the 4DEngine repo (not this Python r4d bridge)."""
     typer.echo(
-        "4dollama (Python): no GGUF pull here. Use:  `ollama pull " + model + "`  for weights, "
-        "or build the Go `4dollama` from 4DEngine for integrated pull. Roma4D runs via r4d.exe.",
+        "Pull GGUF with the Go CLI from 4DEngine:  4dollama pull "
+        + model
+        + "  then  4dollama serve  — inference defaults to native four_d_engine (no hybrid). "
+        "Optional hybrid only if you set FOURD_INFERENCE=ollama and OLLAMA_HOST. "
+        "This Python package is the Roma4D (r4d) HTTP bridge on :13377.",
         err=True,
     )
     raise typer.Exit(2)

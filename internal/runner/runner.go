@@ -54,7 +54,7 @@ func (s *Service) Generate(ctx context.Context, req ollama.GenerateRequest, four
 	entry, ok := s.Registry.Resolve(req.Model)
 	forward := s.Infer.Name() == "ollama-forward"
 	if !ok && !forward {
-		return ollama.GenerateResponse{}, fmt.Errorf("model not found: %q (add .gguf under FOURD_MODELS, or set FOURD_INFERENCE=ollama so names match upstream)", req.Model)
+		return ollama.GenerateResponse{}, fmt.Errorf("model not found: %q — run: 4dollama pull %s (GGUF into FOURD_MODELS); decoding uses native four_d_engine. Optional: FOURD_INFERENCE=ollama + OLLAMA_HOST for hybrid", req.Model, req.Model)
 	}
 
 	var inspectJSON, path string

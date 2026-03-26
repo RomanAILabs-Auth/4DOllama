@@ -10,7 +10,7 @@ import (
 	"github.com/4dollama/4dollama/internal/ollama"
 )
 
-// Stub is the built-in provider: full 4D autoregressive decode (RoPE → attention → projected vocab logits → flat sample).
+// Stub is the native four_d_engine provider: 4D autoregressive decode (RoPE → attention → projected vocab logits → sample).
 type Stub struct{}
 
 func (Stub) Name() string { return "stub" }

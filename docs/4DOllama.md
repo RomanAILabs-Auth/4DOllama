@@ -29,7 +29,7 @@ After install, open a **new** terminal if your shell PATH was updated. **`4dolla
 
 Production-oriented **Ollama-compatible** HTTP API and CLI with a pluggable **4D engine** (`four_d_engine`, Rust) exposed over **CGO**. The server is suitable for containers (non-root user, health checks, structured logs, request limits, graceful shutdown). Docker image sets **`FOURD_GPU=cpu`** by default (typical CPU-only container).
 
-**Scope today:** real **GGUF metadata scan + lift preview** via Rust; **HTTP/CLI parity** for core routes; **inference is pluggable**. If **`OLLAMA_HOST`** is set (install scripts set `http://127.0.0.1:11434`), completions default to **`FOURD_INFERENCE=ollama`** — real answers via your **Ollama** process. With no `OLLAMA_HOST`, default is **stub** (deterministic demo tokens for API testing, not model-quality text). Set **`FOURD_INFERENCE=stub`** explicitly to keep demo mode even when Ollama is configured. Full native autoregressive decode in the Rust 4D stack is **roadmapped**; see `docs/ARCHITECTURE.md`.
+**Scope today:** **Default inference is native four_d_engine** (`FOURD_INFERENCE` unset or `stub|fourd|native`): pulled **GGUF** is resolved under `FOURD_MODELS`, lifted/sampled, then **autoregressive decode** runs through quaternion RoPE → SpacetimeAttention4D → projected logits in-process (no llama.cpp). **Hybrid** is **opt-in only**: set **`FOURD_INFERENCE=ollama`** and **`OLLAMA_HOST`** to forward completions to stock Ollama while keeping 4dollama’s API on **13373**. See `docs/ARCHITECTURE.md`.
 
 ## Why a 4D engine?
 
@@ -96,7 +96,7 @@ curl -s http://localhost:13373/api/generate -d '{"model":"qwen2.5","prompt":"Hel
 | `OLLAMA_MODELS` | `~/.ollama/models` | Ollama data root (manifests + blobs) |
 | `FOURD_DEFAULT_MODEL` | `qwen2.5` | Install script / docs hint only |
 | `FOURD_GPU` | _(auto)_ | Install scripts set **`cpu`** when no discrete GPU / CUDA path is found |
-| `FOURD_INFERENCE` | _auto_ | Unset + **`OLLAMA_HOST` set** → **`ollama`**. Unset + no host → **`stub`**. |
+| `FOURD_INFERENCE` | **`stub`** (default) | Native 4D decode on GGUF. Set **`ollama`** + **`OLLAMA_HOST`** only for hybrid forwarding. Aliases: `fourd`, `native`, `engine` → stub. |
 | `FOURD_STREAM_CHUNK_MS` | `0` | Optional artificial delay between NDJSON chunks when `stream: true` |
 
 CLI flag `-fourd-mode` maps the spec’s `--4d-mode` (Go’s `flag` cannot register `-4d-mode`).
