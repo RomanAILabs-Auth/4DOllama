@@ -4,14 +4,21 @@ Ollama-shaped REST + CLI over **Roma4D** (`r4d`). Default bind: **127.0.0.1:1337
 
 ```powershell
 cd 4DOllama
-pip install -e .
+# Use the SAME Python as `quantum_win` (or your venv):
+python -m pip install -e .
+# If `4dollam` / `4dollama` is still "not recognized", Scripts is not on PATH:
+$env:Path = "$(python -c 'import sys; print(sys.prefix)')\Scripts;$env:Path"
+# Or always (no console script needed):
+python -m fourdollama run qwen2.5
+
 $env:R4D_PKG_ROOT="C:\path\to\roma4d"
 $env:FOURDOLLAMA_R4D="C:\path\to\r4d.exe"
-4dollama run qwen2.5
-# one-shot: 4dollama run qwen2.5 hello there
-# typo alias: 4dollam run llama3
 4dollama serve
 ```
+
+**quantum_win:** from repo root, after `quantum_win`:
+
+`.\4DOllama\scripts\Install-IntoCurrentVenv.ps1`
 
 Env: `FOURDOLLAMA_HOST`, `FOURDOLLAMA_PORT`, `FOURDOLLAMA_R4D`, `R4D_PKG_ROOT`, `FOURDOLLAMA_DATA`, `FOURDOLLAMA_R4D_TIMEOUT`.
 
