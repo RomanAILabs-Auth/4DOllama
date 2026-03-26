@@ -35,7 +35,7 @@ Commands:
                        Use serve -verbose for debug-level engine logs (same as FOURD_LOG_LEVEL=debug)
   pull <model>       Download GGUF from Ollama registry (registry.ollama.ai)
   import-ollama <m>  Copy GGUF from local Ollama after "ollama pull" (tensor-safe path)
-  run <model>        Interactive TTY chat, or /api/generate if you pass a prompt
+  run <model>        Ollama-style >>> REPL (line mode); optional FOURD_TUI=1 for full-screen TUI
   list               List models (GET /api/tags)
   ps                 Running models (stub)
   version            Print version
@@ -49,6 +49,8 @@ Global flags:
 
 Environment:
   FOURD_HOST, FOURD_PORT (default 13373), FOURD_MODELS, FOURD_LOG_LEVEL (or LOG_LEVEL), FOURD_LOG_JSON
+  FOURD_TUI=1         Use bubble-tea full-screen chat instead of Ollama-style >>> line REPL
+  FOURD_LINE_CHAT=1    Force line REPL (default is already line mode)
   FOURD_INFERENCE — ollama when OLLAMA_HOST is set, else stub; set stub explicitly for demo tokens only
   FOURD_STREAM_CHUNK_MS — optional delay between streamed response chunks (default 0)
   OLLAMA_HOST, OLLAMA_REGISTRY, OLLAMA_MODELS
@@ -191,6 +193,8 @@ func cmdRun(args []string, log *slog.Logger, fourD bool) int {
 		stdinTTY := term.IsTerminal(int(os.Stdin.Fd()))
 		forceLine := strings.TrimSpace(os.Getenv("FOURD_LINE_CHAT")) == "1" ||
 			strings.EqualFold(strings.TrimSpace(os.Getenv("FOURD_NO_TUI")), "1")
+		useBubble := (strings.TrimSpace(os.Getenv("FOURD_TUI")) == "1" ||
+			strings.EqualFold(strings.TrimSpace(os.Getenv("FOURD_TUI")), "true")) && stdinTTY
 
 		// Non-interactive: no TTY on stdout (pipe/redirect) — one-shot from stdin or fail.
 		if !stdoutTTY {
@@ -203,29 +207,22 @@ func cmdRun(args []string, log *slog.Logger, fourD bool) int {
 			return cmdRunGenerate(model, prompt)
 		}
 
-		// Interactive chat: stdout is a terminal. Stdin may NOT be a TTY on Windows / VS Code /
-		// Cursor (ConPTY) — line-based chat still reads lines correctly; TUI needs a console stdin.
+		// Interactive: default Ollama-style linear REPL (>>> + line in/out). Bubble full-screen UI
+		// only when FOURD_TUI=1 and stdin is a real TTY.
 		base := baseURL()
-		if forceLine {
+		if forceLine || !useBubble {
 			if err := tui.RunLineChat(model, base); err != nil {
 				fmt.Fprintf(os.Stderr, "4dollama run: %v\n", err)
 				return 1
 			}
 			return 0
 		}
-		if stdinTTY {
-			if err := tui.RunInteractive(model, base); err != nil {
-				fmt.Fprintf(os.Stderr, "4dollama run: TUI exited (%v); retry with FOURD_LINE_CHAT=1 for line mode\n", err)
-				if err2 := tui.RunLineChat(model, base); err2 != nil {
-					fmt.Fprintf(os.Stderr, "4dollama run: %v\n", err2)
-					return 1
-				}
+		if err := tui.RunInteractive(model, base); err != nil {
+			fmt.Fprintf(os.Stderr, "4dollama run: TUI exited (%v); falling back to line mode\n", err)
+			if err2 := tui.RunLineChat(model, base); err2 != nil {
+				fmt.Fprintf(os.Stderr, "4dollama run: %v\n", err2)
+				return 1
 			}
-			return 0
-		}
-		if err := tui.RunLineChat(model, base); err != nil {
-			fmt.Fprintf(os.Stderr, "4dollama run: %v\n", err)
-			return 1
 		}
 		return 0
 	}

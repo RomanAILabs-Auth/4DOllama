@@ -81,11 +81,9 @@ def _run_slash(line: str) -> str | None:
     if t in ("/bye", "/exit", "/quit"):
         return "exit"
     if t in ("/help", "/?", "?"):
-        typer.secho(
-            "Commands: /help, /bye, /exit, /clear  ·  Same as Ollama: type a message, Enter to run.",
-            fg="cyan",
-            err=True,
-        )
+        print("Available Commands:", file=sys.stderr)
+        print("  /clear          Clear the session context", file=sys.stderr)
+        print("  /bye            Exit", file=sys.stderr)
         return "continue"
     if t == "/clear":
         return "continue"
@@ -106,7 +104,7 @@ def cmd_run(
     try:
         canonical = ensure_model(s, model)
     except ValueError as e:
-        typer.secho(str(e), fg="red", err=True)
+        print(str(e), file=sys.stderr)
         raise typer.Exit(1) from e
 
     one_shot = " ".join(prompt) if prompt else None
@@ -117,15 +115,11 @@ def cmd_run(
             asyncio.run(_local_stream(canonical, one_shot, s))
         return
 
-    typer.secho(f"Using model {canonical}  (Roma4D / r4d backend)", fg="green", err=True)
-    typer.secho("", err=True)
-    typer.secho(">>> Send a message (/? for help)", fg="white", err=True)
-
     while True:
         try:
             line = input(">>> ")
         except (EOFError, KeyboardInterrupt):
-            typer.echo("", err=True)
+            print(file=sys.stderr)
             raise typer.Exit(0) from None
         if not line.strip():
             continue
@@ -149,7 +143,7 @@ async def _local_stream(model: str, prompt: str, settings: Settings) -> None:
             sys.stdout.write(chunk)
             sys.stdout.flush()
     except OSError as e:
-        typer.secho(f"\nengine: {e}", fg="red", err=True)
+        print(f"\nengine: {e}", file=sys.stderr)
 
 
 def _remote_generate_stream(settings: Settings, model: str, prompt: str) -> None:
@@ -181,7 +175,7 @@ def _remote_generate_stream(settings: Settings, model: str, prompt: str) -> None
                 if obj.get("done"):
                     sys.stdout.flush()
     except urllib.error.URLError as e:
-        typer.secho(f"api: {e}", fg="red", err=True)
+        print(f"api: {e}", file=sys.stderr)
         raise typer.Exit(1) from e
 
 

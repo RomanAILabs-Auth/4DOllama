@@ -1,4 +1,4 @@
-// Package tui implements an interactive terminal chat for 4dollama (Ollama-identical UX: history, streaming, /bye).
+// Package tui implements optional full-screen chat (FOURD_TUI=1). Default CLI uses RunLineChat (Ollama-style >>> REPL).
 package tui
 
 import (
@@ -17,7 +17,7 @@ import (
 	"github.com/4dollama/4dollama/internal/ollama"
 )
 
-const statusLine = "Message... Enter = send (Ollama-style) · Ctrl+Enter = newline · /help /clear /bye"
+const statusLine = "Send a message (/? for help)"
 
 // RunInteractive starts full-screen chat. Uses streaming /api/chat with full message history (Ollama parity).
 func RunInteractive(modelName, baseURL string) error {
@@ -61,25 +61,12 @@ func (m *chatModel) initWidgets() {
 	m.textarea.Prompt = ""
 
 	m.viewport = viewport.New(72, 12)
-	m.viewport.SetContent(m.banner())
-}
-
-func (m *chatModel) banner() string {
-	return lipgloss.NewStyle().Foreground(lipgloss.Color("#6272A4")).Render(
-		"4dollama · " + m.modelName + " · /help /clear /bye · PgUp/PgDn scroll",
-	)
+	m.viewport.SetContent("")
 }
 
 func (m *chatModel) Init() tea.Cmd {
 	return textarea.Blink
 }
-
-var (
-	styleTitle = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("#FF79C6"))
-	styleUser  = lipgloss.NewStyle().Foreground(lipgloss.Color("#8BE9FD"))
-	styleErr   = lipgloss.NewStyle().Foreground(lipgloss.Color("#FF5555"))
-	styleHelp  = lipgloss.NewStyle().Foreground(lipgloss.Color("#6272A4"))
-)
 
 func (m *chatModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
@@ -161,8 +148,8 @@ func (m *chatModel) submit() (tea.Model, tea.Cmd) {
 	if low == "/bye" || low == "/exit" || low == "/quit" {
 		return m, tea.Quit
 	}
-	if low == "/help" {
-		help := "/help  /clear  /bye|/exit|/quit  ·  Enter send  ·  Ctrl+Enter newline  ·  PgUp/PgDn scroll  ·  esc quit"
+	if low == "/help" || low == "/?" {
+		help := "Available Commands:\n  /clear          Clear the session context\n  /bye            Exit"
 		m.history = append(m.history, help)
 		m.textarea.Reset()
 		m.refreshViewport()
@@ -172,20 +159,20 @@ func (m *chatModel) submit() (tea.Model, tea.Cmd) {
 		m.messages = m.messages[:0]
 		m.history = m.history[:0]
 		m.streaming = ""
-		m.viewport.SetContent(m.banner())
+		m.viewport.SetContent("")
 		m.textarea.Reset()
 		m.refreshViewport()
 		return m, textarea.Blink
 	}
 
 	m.messages = append(m.messages, ollama.Message{Role: "user", Content: text})
-	m.history = append(m.history, styleUser.Render(">>> "+text))
+	m.history = append(m.history, ">>> "+text)
 	m.textarea.Reset()
 	m.textarea.Blur()
 	m.textarea.Focus()
 	m.streaming = ""
 	m.busy = true
-	m.status = "thinking…"
+	m.status = ""
 	m.refreshViewport()
 
 	go m.runStreamChat()
@@ -264,8 +251,8 @@ func (m *chatModel) applyLayout() {
 	if m.height > 15 {
 		th = 7
 	}
-	// header + gap + viewport + gap + textarea + gap + status
-	vh := m.height - th - 5
+	// viewport + gap + textarea (no Ollama-style chrome)
+	vh := m.height - th - 3
 	if vh < 6 {
 		vh = 6
 	}
@@ -295,18 +282,10 @@ func (m *chatModel) refreshViewport() {
 }
 
 func (m *chatModel) View() string {
-	title := styleTitle.Render(fmt.Sprintf(" 4dollama · %s · chat ", m.modelName))
-	stat := styleHelp.Render(m.status)
-	header := lipgloss.JoinHorizontal(lipgloss.Left, title, "  ", stat)
-
 	body := lipgloss.JoinVertical(lipgloss.Left,
-		header,
-		"",
 		m.viewport.View(),
 		"",
 		m.textarea.View(),
-		"",
-		styleHelp.Render(statusLine),
 	)
 	return lipgloss.Place(m.width, m.height, lipgloss.Center, lipgloss.Top, body)
 }

@@ -13,12 +13,10 @@ import (
 	"github.com/4dollama/4dollama/internal/ollama"
 )
 
-// RunLineChat is readline-style chat (Enter to send) for hosts where stdin is not a TTY
-// but stdout is — e.g. Windows Terminal / Cursor / ConPTY. Same /api/chat + streaming as the TUI.
+// RunLineChat is Ollama-identical line REPL: only ">>> " prompts, no header/footer (Windows ConPTY-safe).
 func RunLineChat(modelName, base string) error {
 	base = strings.TrimSuffix(base, "/")
 	messages := make([]ollama.Message, 0, 32)
-	fmt.Fprintf(os.Stdout, "4dollama chat · %s · %s\n", modelName, statusLine)
 	in := bufio.NewReader(os.Stdin)
 	for {
 		fmt.Fprint(os.Stdout, ">>> ")
@@ -38,13 +36,14 @@ func RunLineChat(modelName, base string) error {
 		if low == "/bye" || low == "/exit" || low == "/quit" {
 			return nil
 		}
-		if low == "/help" {
-			fmt.Println("  /help  /clear  /bye|/exit|/quit  ·  Enter send  ·  PgUp/PgDn scroll in full TUI")
+		if low == "/help" || low == "/?" {
+			fmt.Println("Available Commands:")
+			fmt.Println("  /clear          Clear the session context")
+			fmt.Println("  /bye            Exit")
 			continue
 		}
 		if low == "/clear" {
 			messages = messages[:0]
-			fmt.Println("  (conversation cleared)")
 			continue
 		}
 		messages = append(messages, ollama.Message{Role: "user", Content: text})
