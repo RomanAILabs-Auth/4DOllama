@@ -8,7 +8,11 @@ import (
 
 // chunkGenerateResponse splits text into streaming deltas (Ollama-style: client concatenates).
 func chunkGenerateResponse(s string, chunkRunes int) []string {
-	if chunkRunes < 8 {
+	if chunkRunes < 1 {
+		chunkRunes = 1
+	}
+	// Default for generate (larger chunks); chat passes explicit small chunk for streaming UX.
+	if chunkRunes > 1 && chunkRunes < 8 {
 		chunkRunes = 24
 	}
 	r := []rune(s)
@@ -51,7 +55,8 @@ func writeOllamaGenerateStream(w http.ResponseWriter, model, createdAt, fullText
 func writeOllamaChatStream(w http.ResponseWriter, model, createdAt, fullText string, delay time.Duration) {
 	w.Header().Set("Content-Type", "application/x-ndjson")
 	fl, _ := w.(http.Flusher)
-	parts := chunkGenerateResponse(fullText, 6)
+	// One rune (or short grapheme cluster step) per NDJSON line so terminals show smooth streaming.
+	parts := chunkGenerateResponse(fullText, 1)
 	for i, delta := range parts {
 		done := i == len(parts)-1
 		line, _ := json.Marshal(map[string]any{

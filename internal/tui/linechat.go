@@ -13,6 +13,12 @@ import (
 	"github.com/4dollama/4dollama/internal/ollama"
 )
 
+// RunInteractive is identical to RunLineChat. The old bubble-tea full-screen UI was removed so the CLI
+// always matches plain Ollama (>>> only, no duplicate placeholders or colored chrome).
+func RunInteractive(modelName, base string) error {
+	return RunLineChat(modelName, base)
+}
+
 // RunLineChat is Ollama-identical line REPL: only ">>> " prompts, no header/footer (Windows ConPTY-safe).
 func RunLineChat(modelName, base string) error {
 	base = strings.TrimSuffix(base, "/")

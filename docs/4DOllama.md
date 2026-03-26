@@ -4,7 +4,7 @@ This document preserves the **4DOllama** product guide for the **4DEngine** mono
 
 ## Ollama-identical interactive chat (Phase 11)
 
-`4dollama run <model>` matches **`ollama run`**-style usage: **streaming** assistant text, **`/help`**, **`/clear`**, **`/bye`** (also **`/exit`** / **`/quit`**), **Ctrl+Enter** for a newline in the full-screen TUI, **PgUp** / **PgDown** to scroll history, and the status line: *Message... Enter = send (Ollama-style) · Ctrl+Enter = newline · /help /clear /bye*. Consecutive duplicate user messages are dropped server-side.
+`4dollama run <model>` matches **`ollama run`**-style usage: a plain **`>>> `** line REPL (no bubble-tea chrome, no duplicate placeholder lines), **streaming** assistant text over **`/api/chat`** (NDJSON flushed per rune for smooth output), and **`/help`**, **`/?`**, **`/clear`**, **`/bye`** (also **`/exit`** / **`/quit`**). Consecutive duplicate user messages are dropped server-side.
 
 **Logging:** Quaternion RoPE, spacetime attention, 4D GEMM, and related engine traces are **`debug`** logs only. Use **`4dollama serve -verbose`**, **`FOURD_LOG_LEVEL=debug`**, or **`LOG_LEVEL=debug`** to print them. When **`run`** auto-starts **`serve`** for interactive chat (terminal UI), the child uses **`FOURD_LOG_LEVEL=error`** so stderr stays quiet.
 
@@ -25,7 +25,7 @@ powershell -ExecutionPolicy Bypass -File .\scripts\install.ps1
 chmod +x scripts/install.sh && ./scripts/install.sh
 ```
 
-After install, open a **new** terminal if your shell PATH was updated. **`4dollama doctor`** confirms listen URL, model dir, and **“CPU mode active”** on CPU-only hosts. **`4dollama run qwen2.5`** (no extra args) opens **Ollama-style** chat: full-screen TUI when stdin is a real console TTY, or a **line-based** prompt (`>>> `, **Enter** to send) when stdout is a terminal but stdin is not — common on **Windows / Cursor / VS Code** integrated terminals. Use **`FOURD_LINE_CHAT=1`** to force line mode. **Enter** sends in the TUI (**Ctrl+Enter** inserts a newline). If the API is down, `run` auto-starts `serve` from the same binary. Rebuild and copy the new `4dollama` onto your PATH after pulling changes (`go build -o 4dollama.exe ./cmd/4dollama` or re-run `scripts/install.ps1`).
+After install, open a **new** terminal if your shell PATH was updated. **`4dollama doctor`** confirms listen URL, model dir, and **“CPU mode active”** on CPU-only hosts. **`4dollama run qwen2.5`** (no extra args) always uses the **line-based** prompt (`>>> `, **Enter** to send), including under **Windows / Cursor / VS Code**. If the API is down, `run` auto-starts `serve` from the same binary. **Rebuild** after pulling UI fixes (`go build -o 4dollama.exe ./cmd/4dollama` or `scripts/install.ps1`) — an old `4dollama.exe` will still show the removed bubble UI.
 
 Production-oriented **Ollama-compatible** HTTP API and CLI with a pluggable **4D engine** (`four_d_engine`, Rust) exposed over **CGO**. The server is suitable for containers (non-root user, health checks, structured logs, request limits, graceful shutdown). Docker image sets **`FOURD_GPU=cpu`** by default (typical CPU-only container).
 
