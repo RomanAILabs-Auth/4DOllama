@@ -1,0 +1,8 @@
+# Example library module (resolved from package root next to roma4d.toml).
+
+def bump(n: int) -> int:
+    return n + 1
+
+
+def identity_v4(v: vec4) -> vec4:
+    return v

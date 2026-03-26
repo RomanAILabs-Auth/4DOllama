@@ -63,7 +63,7 @@ func (s *Service) Generate(ctx context.Context, req ollama.GenerateRequest, four
 		if b, err := s.Eng.InspectGGUF(entry.Path); err == nil {
 			inspectJSON = string(b)
 			if s.Log != nil {
-				s.Log.Info("gguf inspect",
+				s.Log.Debug("gguf inspect",
 					slog.String("model", req.Model),
 					slog.String("path", entry.Path),
 					slog.String("inference", s.Infer.Name()),
@@ -80,7 +80,7 @@ func (s *Service) Generate(ctx context.Context, req ollama.GenerateRequest, four
 	demoIn := promptRunesToFloats(req.Prompt)
 	if s.Eng != nil && len(demoIn) > 0 {
 		if gb := s.Eng.GPUBackend(); gb != "cpu" && s.Log != nil {
-			s.Log.Info("🔥 GPU 4D Acceleration engaged (CUDA/Metal)", slog.String("gpu", gb))
+			s.Log.Debug("GPU 4D acceleration (CUDA/Metal)", slog.String("gpu", gb))
 		}
 	}
 	var fourDDemo []float32
@@ -92,7 +92,7 @@ func (s *Service) Generate(ctx context.Context, req ollama.GenerateRequest, four
 		}
 	}
 	if len(fourDDemo) > 0 && s.Log != nil {
-		s.Log.Info("🚀 4D ENGINE ACTIVE — quaternion rotation applied",
+		s.Log.Debug("4D engine demo (quaternion rotation)",
 			slog.Int("demo_in_len", len(demoIn)),
 			slog.Int("demo_out_len", len(fourDDemo)))
 	}
@@ -120,7 +120,9 @@ func (s *Service) Generate(ctx context.Context, req ollama.GenerateRequest, four
 				paramCount = p
 			}
 			if s.Log != nil {
-				s.Log.Info(fmt.Sprintf("✅ %s lifted to 4D (%d weights)", req.Model, paramCount),
+				s.Log.Debug("GGUF sample lifted to 4D",
+					slog.String("model", req.Model),
+					slog.Int64("param_count", paramCount),
 					slog.Int("lift_sample_len", len(lifted)))
 			}
 			if ollamaRoot != "" {
@@ -142,7 +144,7 @@ func (s *Service) Generate(ctx context.Context, req ollama.GenerateRequest, four
 		}
 	}
 	if len(ropeEmb) > 0 && s.Log != nil {
-		s.Log.Info("🌀 Quaternion RoPE applied in 4D space",
+		s.Log.Debug("quaternion RoPE",
 			slog.Int("rope_len", len(ropeEmb)),
 			slog.Int("rope_quads", len(ropeEmb)/4))
 	}
@@ -158,7 +160,7 @@ func (s *Service) Generate(ctx context.Context, req ollama.GenerateRequest, four
 		}
 	}
 	if len(attnOut) > 0 && s.Log != nil {
-		s.Log.Info("🌌 True 4D Spacetime Attention engaged",
+		s.Log.Debug("spacetime attention 4D",
 			slog.Int("seq_len", len(attnOut)/4),
 			slog.Int("attn_floats", len(attnOut)))
 	}
@@ -189,7 +191,7 @@ func (s *Service) Generate(ctx context.Context, req ollama.GenerateRequest, four
 		}
 	}
 	if gemmOK && s.Log != nil {
-		s.Log.Info("⚙️ Native 4D GEMM kernels engaged — model now in true 4D format",
+		s.Log.Debug("native 4D GEMM",
 			slog.Bool("from_4dgguf", from4DGGUF),
 			slog.Int("lift_len", len(lifted)))
 	}
@@ -210,7 +212,7 @@ func (s *Service) Generate(ctx context.Context, req ollama.GenerateRequest, four
 	}
 
 	if s.Infer.Name() == "stub" && s.Log != nil && len(demoIn) > 0 {
-		s.Log.Info("⚡ Full 4D autoregressive generation engaged",
+		s.Log.Debug("stub 4D autoregressive path",
 			slog.Int("max_tokens", inference.AutoregMaxTokens),
 			slog.Int("prompt_embed_len", len(demoIn)))
 	}
@@ -224,8 +226,9 @@ func (s *Service) Generate(ctx context.Context, req ollama.GenerateRequest, four
 
 // Chat maps chat messages to a single prompt and uses Generate.
 func (s *Service) Chat(ctx context.Context, req ollama.ChatRequest, fourDMode bool) (ollama.ChatResponse, error) {
+	msgs := dedupeConsecutiveUserMessages(ensureFourDSystemPrompt(req.Messages))
 	var user strings.Builder
-	for _, m := range req.Messages {
+	for _, m := range msgs {
 		user.WriteString(m.Role)
 		user.WriteString(": ")
 		user.WriteString(m.Content)

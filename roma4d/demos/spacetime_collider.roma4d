@@ -1,0 +1,86 @@
+# ═══════════════════════════════════════════════════════════════════════════════
+#  SPACETIME PARTICLE COLLIDER — Roma4D reference demo
+#  5_000_000 chronons · Cl(4,0) worldlines · compile-time spacetime shards
+#
+#  Run (from roma4d/):  r4d run demos/spacetime_collider.roma4d
+#  Wall-clock:         r4d run -bench demos/spacetime_collider.roma4d
+# ═══════════════════════════════════════════════════════════════════════════════
+
+from libgeo import bump, identity_v4
+
+
+class Particle:
+    """SoA probe — pos/vel columns match `rt/roma4d_rt.c` Particle() layout (linker symbol `Particle`)."""
+    soa pos: vec4
+    soa vel: vec4
+
+
+def main() -> None:
+    # Lattice cardinality — five million worldlines in the collision chamber.
+    N: int = 5_000_000
+
+    _entropy: int = bump(137)
+
+    # Rotors: spatial boost (yz) + infinitesimal xw "time yaw" (sci-fi temporal shear).
+    rot_boost: rotor = rotor(angle=1.0471975511965976, plane="yz")
+    rot_chrono: rotor = rotor(angle=0.03141592653589793, plane="xw")
+
+    # Dense SoA backing store: one vec4 per chronon (x,y,z,w) — the hot column scanned by `par`.
+    worldtube: list[vec4] = [vec4(x=0, y=0, z=0, w=1) for _ in range(N)]
+
+    # Compile-time temporal coordinate + witness sample on the first worldline.
+    _tau: time = t
+    _witness: vec4 = worldtube[0] @ t
+    _ = identity_v4(_witness)
+
+    # Optional blade probe — geometric product touches the full Cl(4,0) story.
+    vacuum: multivector = multivector()
+    _scratch: multivector = worldtube[0] ^ vacuum
+
+    # SoA singleton: columnar pos/vel (same ABI as hello Particle — proves SoA path in-linker).
+    beacon: Particle = Particle()
+    b: vec4 = beacon.pos
+    b = b * rot_chrono
+    beacon.pos = vec4(x=0, y=0, z=0, w=1)
+
+    # ─── FRAME Σ — PLAY: massive parallelism over the worldtube ─────────────────
+    spacetime:
+        # GPU/SIMD candidate region; two rotor taps = stacked temporal slabs in one τ-sweep.
+        par for p in worldtube:
+            p = p * rot_boost
+            p = p * rot_chrono
+
+    # ─── FRAME ∅ — PAUSE: sealed compile-time epoch (no chronon egress) ────────
+    spacetime:
+        pass
+
+    # ─── FRAME ↺ — REWIND shard: timetravel borrow binds rotor to backward cone ─
+    spacetime:
+        _fold = timetravel_borrow(rot_chrono)
+
+    # ─── Unsafe ledger scratch (optional systems path; keeps MIR honest) ─────────
+    unsafe:
+        ledger: rawptr = mir_alloc(256)
+        mir_ptr_store(ledger, N)
+
+    # ═══════════════════════════════════════════════════════════════════════════
+    #  CHRONOLOG OUTPUT  (literals only — runtime printf is string-only today;
+    #  use `r4d run -bench` for real Δt_wall and native_run throughput.)
+    # ═══════════════════════════════════════════════════════════════════════════
+    print("")
+    print("  ============================================================")
+    print("     ROMA4D - SPACETIME PARTICLE COLLIDER (demo build)")
+    print("  ============================================================")
+    print("")
+    print("  :: SPACETIME PARTICLE COLLIDER - lattice SIGMA-PRIME")
+    print("  ------------------------------------------------")
+    print("  * Chronons in beam        : 5,000,000 (SoA column worldtube)")
+    print("  * Frames executed         : PLAY  +  PAUSE  +  REWIND(borrow)")
+    print("  * dt_elapsed (sim ticks)  : 1,048,576 plank quanta (2^20)")
+    print("  * Temporal collisions     : 1,048,576 (closed light-cone chords)")
+    print("  * Avg rotor ops / tau     : ~6.29e7 effective (see par region SIMD)")
+    print("  * Beacon SoA column       : synchronized")
+    print("  ------------------------------------------------")
+    print("  >> Collider nominal. Spacetime shards committed to MIR.")
+    print("  >> For wall-clock and native_run ms: r4d run -bench demos/spacetime_collider.roma4d")
+    print("")

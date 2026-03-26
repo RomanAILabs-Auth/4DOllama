@@ -6,11 +6,25 @@ import (
 	"net/http"
 	"os"
 	"os/exec"
+	"strings"
 	"time"
 )
 
+func mergeEnv(base []string, key, val string) []string {
+	prefix := key + "="
+	out := make([]string, 0, len(base)+1)
+	for _, e := range base {
+		if strings.HasPrefix(e, prefix) {
+			continue
+		}
+		out = append(out, e)
+	}
+	return append(out, prefix+val)
+}
+
 // ensureServerRunning starts `4dollama serve` from the same binary if /healthz is not reachable.
-func ensureServerRunning(log *slog.Logger) error {
+// silentChild uses FOURD_LOG_LEVEL=error for the child so interactive chat stays clean.
+func ensureServerRunning(log *slog.Logger, silentChild bool) error {
 	base := baseURL()
 	client := &http.Client{Timeout: 2 * time.Second}
 	if resp, err := client.Get(base + "/healthz"); err == nil {
@@ -26,10 +40,15 @@ func ensureServerRunning(log *slog.Logger) error {
 	cmd := exec.Command(exe, "serve")
 	cmd.Stdout = os.Stderr
 	cmd.Stderr = os.Stderr
+	if silentChild {
+		cmd.Env = mergeEnv(os.Environ(), "FOURD_LOG_LEVEL", "error")
+	} else {
+		cmd.Env = os.Environ()
+	}
 	if err := cmd.Start(); err != nil {
 		return fmt.Errorf("start serve: %w", err)
 	}
-	if log != nil {
+	if log != nil && !silentChild {
 		log.Info("started local 4dollama serve", slog.Int("pid", cmd.Process.Pid), slog.String("url", base))
 	}
 	for i := 0; i < 100; i++ {

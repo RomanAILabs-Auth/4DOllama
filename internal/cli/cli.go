@@ -32,6 +32,7 @@ Usage:
 
 Commands:
   serve              Start the HTTP API (default :13373, avoids Ollama on :11434)
+                       Use serve -verbose for debug-level engine logs (same as FOURD_LOG_LEVEL=debug)
   pull <model>       Download GGUF from Ollama registry (registry.ollama.ai)
   import-ollama <m>  Copy GGUF from local Ollama after "ollama pull" (tensor-safe path)
   run <model>        Interactive TTY chat, or /api/generate if you pass a prompt
@@ -47,7 +48,7 @@ Global flags:
   -fourd-mode       Enable 4D coherence features in responses
 
 Environment:
-  FOURD_HOST, FOURD_PORT (default 13373), FOURD_MODELS, FOURD_LOG_LEVEL, FOURD_LOG_JSON
+  FOURD_HOST, FOURD_PORT (default 13373), FOURD_MODELS, FOURD_LOG_LEVEL (or LOG_LEVEL), FOURD_LOG_JSON
   FOURD_INFERENCE — ollama when OLLAMA_HOST is set, else stub; set stub explicitly for demo tokens only
   FOURD_STREAM_CHUNK_MS — optional delay between streamed response chunks (default 0)
   OLLAMA_HOST, OLLAMA_REGISTRY, OLLAMA_MODELS
@@ -55,6 +56,18 @@ Environment:
   FOURD_DEFAULT_MODEL — optional hint (default qwen2.5)
 
 `)
+}
+
+// LoggerFromConfig builds stderr slog (same shape as main); used by serve -verbose.
+func LoggerFromConfig(cfg config.Config) *slog.Logger {
+	opts := &slog.HandlerOptions{Level: cfg.LogLevel}
+	var h slog.Handler
+	if cfg.LogJSON {
+		h = slog.NewJSONHandler(os.Stderr, opts)
+	} else {
+		h = slog.NewTextHandler(os.Stderr, opts)
+	}
+	return slog.New(h)
 }
 
 // Run parses argv (after global flags) and dispatches subcommands.
@@ -134,11 +147,16 @@ func cmdImportOllama(args []string, log *slog.Logger) int {
 	return 0
 }
 
-func cmdServe(args []string, log *slog.Logger, four bool) int {
+func cmdServe(args []string, _ *slog.Logger, four bool) int {
 	fs := flag.NewFlagSet("serve", flag.ContinueOnError)
+	verbose := fs.Bool("verbose", false, "debug-level logs (4D engine diagnostics on stderr)")
 	fs.SetOutput(io.Discard)
 	_ = fs.Parse(args)
 	cfg := config.Load()
+	if *verbose {
+		cfg.LogLevel = slog.LevelDebug
+	}
+	log := LoggerFromConfig(cfg)
 	ctx := context.Background()
 	if err := httpserver.Run(ctx, cfg, log, four); err != nil {
 		log.Error("server stopped", slog.Any("err", err))
@@ -163,13 +181,14 @@ func cmdRun(args []string, log *slog.Logger, fourD bool) int {
 		return 2
 	}
 	model := args[0]
-	if err := ensureServerRunning(log); err != nil {
+	stdoutTTY := term.IsTerminal(int(os.Stdout.Fd()))
+	interactiveOut := len(args) == 1 && stdoutTTY
+	if err := ensureServerRunning(log, interactiveOut); err != nil {
 		fmt.Fprintf(os.Stderr, "4dollama run: %v\n", err)
 		return 1
 	}
 	if len(args) == 1 {
 		stdinTTY := term.IsTerminal(int(os.Stdin.Fd()))
-		stdoutTTY := term.IsTerminal(int(os.Stdout.Fd()))
 		forceLine := strings.TrimSpace(os.Getenv("FOURD_LINE_CHAT")) == "1" ||
 			strings.EqualFold(strings.TrimSpace(os.Getenv("FOURD_NO_TUI")), "1")
 

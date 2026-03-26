@@ -13,7 +13,7 @@
 - ⚙️ **Fast native binaries** — **MIR → LLVM IR → clang**; **`-bench`** prints **`load_manifest`** … **`clang_link_exe`** and **`native_run`** (`r4d run` only).
 - 🛠️ **Practical toolchain** — **`r4d`** / **`roma4d`**, **`roma4d.toml`**, and **`debug/last_build_failure.log`** when something breaks.
 
-**Full programming reference (share with an LLM):** [`roma4d/docs/Roma4D_Guide.md`](roma4d/docs/Roma4D_Guide.md).
+**Authoritative reference for coding (and for LLM-assisted development):** [`docs/Roma4D_Guide.md`](docs/Roma4D_Guide.md) — syntax, builtins, ownership, spacetime, runtime, and debugging.
 
 ---
 
@@ -22,7 +22,8 @@
 **Prerequisites:** [Go 1.22+](https://go.dev/dl/), **`clang`** on `PATH`, and (on Windows) a **MinGW-w64** toolchain on `PATH` so clang can link with **`-target *-windows-gnu`**—see [Installation](#installation).
 
 ```bash
-cd roma4d
+git clone https://github.com/RomanAILabs-Auth/Roma4D.git
+cd Roma4D
 go build -o "$(go env GOPATH)/bin/r4d" ./cmd/r4d
 r4d run examples/min_main.roma4d
 ```
@@ -30,7 +31,7 @@ r4d run examples/min_main.roma4d
 **Windows (recommended):** use the repo launcher so you always run **this** tree’s compiler:
 
 ```powershell
-cd roma4d
+cd Roma4D
 .\r4d.ps1 run examples\min_main.roma4d
 ```
 
@@ -50,8 +51,7 @@ You should see **`r4d run: passed.`** (exit code **42** is intentional for `min_
 
 | Step | Command |
 |------|---------|
-| Clone | `git clone` this repository and `cd` into it. |
-| Enter module | `cd roma4d` |
+| Clone | `git clone https://github.com/RomanAILabs-Auth/Roma4D.git` and `cd Roma4D`. |
 | Build CLI | `go build -o "$(go env GOPATH)/bin/r4d" ./cmd/r4d` — on Windows name the output `r4d.exe` (see `r4d.ps1`). |
 | Verify | `r4d version` |
 
@@ -59,7 +59,7 @@ You should see **`r4d run: passed.`** (exit code **42** is intentional for `min_
 
 1. Install **Go**, **LLVM/Clang** (e.g. official installer), and **MinGW-w64** (e.g. [MSYS2](https://www.msys2.org/) package `mingw-w64-ucrt-x86_64-gcc`).
 2. Put **clang** and **MinGW `bin`** on your **user PATH**.
-3. From `roma4d/`, run **`.\r4d.ps1 …`** or build with:
+3. From the repo root, run **`.\r4d.ps1 …`** or build with:
 
    ```powershell
    go build -o "$(Join-Path (go env GOPATH) 'bin\r4d.exe')" ./cmd/r4d
@@ -74,7 +74,7 @@ You should see **`r4d run: passed.`** (exit code **42** is intentional for `min_
 
 ```bash
 brew install go llvm
-cd roma4d
+cd Roma4D
 go install ./cmd/r4d ./cmd/roma4d
 export PATH="$(go env GOPATH)/bin:$PATH"
 r4d run examples/min_main.roma4d
@@ -84,7 +84,7 @@ r4d run examples/min_main.roma4d
 
 ```bash
 sudo apt install golang clang   # or your distro’s equivalents
-cd roma4d
+cd Roma4D
 go install ./cmd/r4d ./cmd/roma4d
 export PATH="$(go env GOPATH)/bin:$PATH"
 r4d run examples/min_main.roma4d
@@ -92,7 +92,7 @@ r4d run examples/min_main.roma4d
 
 ### When builds fail
 
-- Open **`roma4d/debug/last_build_failure.log`** (clang command, stderr, LLVM IR head).
+- Open **`debug/last_build_failure.log`** (clang command, stderr, LLVM IR head).
 - Set **`R4D_DEBUG=1`** to mirror the same diagnostics on stderr.
 
 ---
@@ -105,7 +105,7 @@ Roma4D sits at the intersection of three ideas:
 2. **A systems core**: explicit layout (**SoA**), ownership-friendly field access, and **`par`** regions the compiler can reason about for **SIMD** and future **GPU** backends.
 3. **A native 4D spine**: rotors, multivectors, and vectors live in **Cl(4,0)** and lower to **LLVM** with **SIMD-friendly** patterns where the MIR pipeline enables it.
 
-The compiler is implemented in **Go** today (`lexer` → `parser` → **typecheck + Ownership 2.0** → **MIR** → **LLVM IR** → **clang**). Long term, the roadmap includes incremental compilation, richer GPU lowering, and a self-hosted path—see **`roma4d/README.md`** (short pointer) and the **ten-pass** list in the source tree.
+The compiler is implemented in **Go** today (`lexer` → `parser` → **typecheck + Ownership 2.0** → **MIR** → **LLVM IR** → **clang**). Long term, the roadmap includes incremental compilation, richer GPU lowering, and a self-hosted path—see the **ten-pass** list in this repository’s docs and sources.
 
 ---
 
@@ -192,6 +192,22 @@ These forms are part of the **language story** for where/when a quantity is eval
 
 ---
 
+## Repository layout
+
+| Path | Role |
+|------|------|
+| `roma4d.toml` | Package manifest |
+| `src/parser/` | Lexer + parser |
+| `src/compiler/` | Typecheck, Ownership 2.0, MIR, LLVM, clang driver, **`-bench`** |
+| `src/core/4d/` | Reference Cl(4,0) numerics (tests/tooling) |
+| `examples/` | `.roma4d` samples, **Bench_4d** + Python/Rust baselines |
+| `demos/` | **Spacetime Particle Collider** (`spacetime_collider.roma4d`) |
+| `cmd/r4d`, `cmd/roma4d` | CLI entrypoints |
+| `internal/cli` | Shared CLI implementation |
+| `r4d.ps1` | Windows helper: `go build` into `GOPATH\bin` + run |
+
+---
+
 ## Real-world examples
 
 ### Minimal native `main` (`examples/min_main.roma4d`)
@@ -203,30 +219,17 @@ def main() -> int:
 
 ### Full demo (`examples/hello_4d.roma4d`)
 
-The shipped demo exercises **imports**, **SoA** particles, **list comprehensions** over **`vec4`**, **rotor** math, **`spacetime:`** + **`par`**, and an **`unsafe:`** block with MIR allocation helpers—see the file under **`roma4d/examples/`**.
+The shipped demo exercises **imports**, **SoA** particles, **list comprehensions** over **`vec4`**, **rotor** math, **`spacetime:`** + **`par`**, and an **`unsafe:`** block with MIR allocation helpers.
 
 ### Rotor swarm microbench (`examples/Bench_4d.r4d`)
 
-**“Rotor swarm”** style workload over a **`list[vec4]`** with **`par for`** and **`vec4 * rotor`**:
-
-```roma4d
-def main() -> None:
-    n: int = 200_000
-    rot: rotor = rotor(angle=1.5707963267948966, plane="xy")
-    pos: list[vec4] = [vec4(x=0, y=0, z=0, w=1) for _ in range(n)]
-    par for p in pos:
-        p = p * rot
-    print("Bench_4d roma4d: done (see bench_4d.py / bench_4d.rs for timed scalar loops)")
-```
-
-**Cross-language baselines** (same folder): **`bench_4d.py`**, **`bench_4d.rs`**, and **`run_bench_4d.ps1`** document how to compare **interpreted Python**, **rustc -O**, and **`r4d run`** on your machine. Read the header comments in **`Bench_4d.r4d`**—today’s MIR lowering does not model every Python **`for`** as a tight scalar inner loop, so numbers are **illustrative of the 4D lane**, not apples-to-apples loop parity.
+**“Rotor swarm”** style workload over a **`list[vec4]`** with **`par for`** and **`vec4 * rotor`**. Cross-language baselines: **`bench_4d.py`**, **`bench_4d.rs`**, **`run_bench_4d.ps1`**.
 
 ### Spacetime Particle Collider (`demos/spacetime_collider.roma4d`)
 
 Large-scale demo: **5,000,000** **`vec4`** worldlines, **`spacetime:`** shards (PLAY / PAUSE / **`timetravel_borrow`**), **`par for`** with dual rotors, SoA **`Particle`** beacon, **`unsafe:`** ledger scratch.
 
 ```powershell
-cd roma4d
 .\r4d.ps1 run demos\spacetime_collider.roma4d
 .\r4d.ps1 run -bench demos\spacetime_collider.roma4d
 ```
@@ -297,21 +300,21 @@ Use **`r4d run -bench`** or **`r4d build -bench`** to see **where time goes** in
 
 ## License & trademark
 
-- **Roma4D** sources under **`roma4d/`** are released under the **MIT License** (see **`roma4d/LICENSE`**; copyright notice: **Daniel Harding – RomanAILabs** unless the file states otherwise).
+- **Roma4D** is released under the **MIT License** — see **[LICENSE](LICENSE)** (Copyright (c) 2026 Daniel Harding - RomanAILabs unless otherwise noted).
 - The **Roma4D** name, logos, and related branding are **trademarks** of their respective owners; the MIT license grants rights to the **software**, not to use those marks as your product name without permission. When in doubt, ask the maintainers.
 
 ---
 
-## Also in this repository: 4DOllama
+## Related: 4DEngine / 4DOllama
 
-**4DEngine** is a **monorepo**: alongside Roma4D you will find **4DOllama**—an Ollama-style HTTP API and CLI backed by the Rust **`four_d_engine`** crate. Full install, API tables, and configuration for that product live in **[`docs/4DOllama.md`](docs/4DOllama.md)**.
+Roma4D is also developed inside the **[4DEngine](https://github.com/RomanAILabs-Auth/4DOllama)** monorepo alongside **4DOllama** (Ollama-style API + Rust **`four_d_engine`**). This repository is the **canonical home** for the language toolchain.
 
 ---
 
 ## Credits
 
-- **Roma4D** — RomanAI Labs / community contributors (see `roma4d/` and git history).
-- **4DOllama / 4D engine** — see **`docs/4DOllama.md`** and **`docs/ARCHITECTURE.md`**.
+- **Roma4D** — RomanAI Labs / community contributors.
+- **4D engine / inference stack** — see **[4DEngine](https://github.com/RomanAILabs-Auth/4DOllama)**.
 
 ---
 

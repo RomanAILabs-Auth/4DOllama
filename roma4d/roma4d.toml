@@ -1,0 +1,18 @@
+# Roma4D (r4d) project manifest — same role as Cargo.toml for the Roma4D toolchain.
+name = "roma4d"
+version = "0.1.0"
+edition = "2025"
+
+[package]
+authors = ["RomanAI Labs"]
+description = "The first 4D spacetime programming language."
+
+[build]
+# Future: sub-second compile target; LLVM / CUDA backends plug in here.
+default_backend = "llvm"
+backend = "llvm"
+incremental = true
+
+[systems]
+gc = false
+unsafe = true

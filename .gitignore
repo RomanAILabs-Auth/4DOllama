@@ -22,3 +22,6 @@ Thumbs.db
 
 # Cursor workspace cache (optional)
 .cursor/
+
+# Local README backup from scripted edits
+README.md.bak

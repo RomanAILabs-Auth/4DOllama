@@ -90,11 +90,18 @@ func Load() Config {
 			inf = "stub"
 		}
 	}
+	logLvl := strings.TrimSpace(os.Getenv("FOURD_LOG_LEVEL"))
+	if logLvl == "" {
+		logLvl = strings.TrimSpace(os.Getenv("LOG_LEVEL"))
+	}
+	if logLvl == "" {
+		logLvl = "info"
+	}
 	return Config{
 		Host:             getenv("FOURD_HOST", "0.0.0.0"),
 		Port:             getenv("FOURD_PORT", DefaultListenPort),
 		ModelsDir:        getenv("FOURD_MODELS", defModels),
-		LogLevel:         parseLevel(getenv("FOURD_LOG_LEVEL", "info")),
+		LogLevel:         parseLevel(logLvl),
 		LogJSON:          strings.EqualFold(getenv("FOURD_LOG_JSON", "false"), "true"),
 		HTTPRead:         30 * time.Second,
 		HTTPWrite:        0, // no write timeout for streaming endpoints

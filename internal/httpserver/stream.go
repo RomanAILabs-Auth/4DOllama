@@ -51,7 +51,7 @@ func writeOllamaGenerateStream(w http.ResponseWriter, model, createdAt, fullText
 func writeOllamaChatStream(w http.ResponseWriter, model, createdAt, fullText string, delay time.Duration) {
 	w.Header().Set("Content-Type", "application/x-ndjson")
 	fl, _ := w.(http.Flusher)
-	parts := chunkGenerateResponse(fullText, 28)
+	parts := chunkGenerateResponse(fullText, 6)
 	for i, delta := range parts {
 		done := i == len(parts)-1
 		line, _ := json.Marshal(map[string]any{

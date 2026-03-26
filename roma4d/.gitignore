@@ -1,0 +1,17 @@
+# Binaries / test cache
+*.exe
+*.test
+*.out
+vendor/
+
+# Incremental compiler cache (Pass 9)
+.roma4d/cache/
+
+# Build failure diagnostics (append-only log from r4d/BuildExecutable)
+debug/last_build_failure.log
+
+# IDE / OS
+.idea/
+.vscode/
+.DS_Store
+Thumbs.db
