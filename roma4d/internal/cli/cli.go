@@ -72,6 +72,12 @@ func stripStrictFlags(args []string) (strict bool, out []string) {
 func usage() {
 	fmt.Fprintf(os.Stderr, `roma4d — the first 4D spacetime programming language
 
+Simplest way to run your program (from any folder, after one-time Windows setup):
+  r4d myfile.r4d
+  r4d C:\path\to\myfile.r4d
+
+That is all you need. Same as: r4d run <file.r4d>
+
 Usage:
   r4d [--strict] <file.r4d> [args...]     Shorthand for run (forgiving Expert mode by default)
   r4d [--strict] run <file.r4d> [args...]
@@ -146,7 +152,7 @@ func ensureSourceFile(abs string) error {
 	fi, err := os.Stat(abs)
 	if err != nil {
 		if os.IsNotExist(err) {
-			return fmt.Errorf("source file not found: %s\nhint: use a full path to the .r4d file, or cd to the folder that contains it (relative paths resolve from your shell cwd, not from the Roma4D repo)", abs)
+			return fmt.Errorf("source file not found: %s\nhint: check spelling. If the file is on your Desktop, use the full path, for example:\n  r4d C:\\Users\\You\\Desktop\\myfile.r4d", abs)
 		}
 		return err
 	}
@@ -203,7 +209,7 @@ func findPkgRoot(from string) (string, error) {
 			}
 		}
 	}
-	return "", fmt.Errorf("roma4d.toml not found above %s\nhint: set R4D_PKG_ROOT (or ROMA4D_HOME) to the folder that contains roma4d.toml, or reinstall with .\\scripts\\Install-R4dUserEnvironment.ps1 so the toolchain path is embedded in r4d.exe", from)
+	return "", fmt.Errorf("could not find Roma4D installation (roma4d.toml) for:\n  %s\n\nFix: run once from your Roma4D folder, then open a NEW terminal:\n  .\\scripts\\Install-R4dUserEnvironment.ps1\nAfter that, r4d yourfile.r4d works from anywhere.", from)
 }
 
 func reportBuildFailure(tool, verb, srcAbs string, err error, strict bool) int {

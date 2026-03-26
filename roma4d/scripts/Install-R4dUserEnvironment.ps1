@@ -115,18 +115,19 @@ foreach ($m in $mingwCandidates) {
 
 $demoPath = Join-Path $romaRoot "demos\cosmic_genesis.r4d"
 Write-Host ""
-Write-Host "Done. Open a NEW terminal, then:" -ForegroundColor Yellow
-Write-Host "  r4 version"
-Write-Host ('  r4 run ' + $demoPath)
+Write-Host "================================================================" -ForegroundColor Green
+Write-Host "  SETUP FINISHED - you only need to remember ONE thing:" -ForegroundColor Green
 Write-Host ""
-Write-Host "From repo folder: cd ...\roma4d ; r4d demos\cosmic_genesis.r4d"
-Write-Host "You can keep .r4d sources anywhere; imports resolve against R4D_PKG_ROOT. (.r4s / .roma4d still work.)"
+Write-Host "      r4d  path\to\yourfile.r4d" -ForegroundColor White
+Write-Host ""
+Write-Host "  Examples:" -ForegroundColor Green
+Write-Host ('      r4d "' + $demoPath + '"') -ForegroundColor White
+Write-Host "      r4d myfile.r4d                    (when you are already in that folder)" -ForegroundColor White
+Write-Host ""
+Write-Host "  Close this window. Open a BRAND NEW PowerShell, then type the line above." -ForegroundColor Yellow
+Write-Host "================================================================" -ForegroundColor Green
 Write-Host ""
 if (-not (Get-Command zig -ErrorAction SilentlyContinue)) {
-    Write-Host "Tip: install Zig and add it to PATH for the default Windows linker (no MSYS2 required)." -ForegroundColor DarkYellow
-    Write-Host "      https://ziglang.org/download/" -ForegroundColor DarkYellow
+    Write-Host "Optional: install Zig for easier Windows builds: https://ziglang.org/download/" -ForegroundColor DarkYellow
     Write-Host ""
 }
-
-Write-Host "PowerShell tip: WriteAllText with a relative path uses the process cwd - use Join-Path `$PWD or a full path." -ForegroundColor DarkGray
-Write-Host ""
