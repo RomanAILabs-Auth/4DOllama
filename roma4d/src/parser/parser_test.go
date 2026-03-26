@@ -6,7 +6,7 @@ import (
 )
 
 func TestParseHelloExample(t *testing.T) {
-	p := filepath.Join("..", "..", "examples", "hello_4d.roma4d")
+	p := filepath.Join("..", "..", "examples", "hello_4d.r4s")
 	m, err := ParseFile(p)
 	if err != nil {
 		t.Fatal(err)

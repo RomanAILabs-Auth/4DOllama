@@ -23,8 +23,8 @@ if (-not (Test-Path $toml)) {
 }
 
 Set-Location $romaRoot
-Write-Host "Building r4d / roma4d from $romaRoot" -ForegroundColor Cyan
-go install ./cmd/r4d ./cmd/roma4d
+Write-Host "Building r4 / r4d / roma4d from $romaRoot" -ForegroundColor Cyan
+go install ./cmd/r4 ./cmd/r4d ./cmd/roma4d
 
 $gopath = (go env GOPATH).Trim()
 if ([string]::IsNullOrWhiteSpace($gopath)) {
@@ -71,12 +71,12 @@ if (-not $already) {
 [Environment]::SetEnvironmentVariable("R4D_PKG_ROOT", $romaRoot, "User")
 Write-Host "Set user R4D_PKG_ROOT=$romaRoot" -ForegroundColor Green
 
-$demoPath = Join-Path $romaRoot "demos\cosmic_genesis.roma4d"
+$demoPath = Join-Path $romaRoot "demos\cosmic_genesis.r4s"
 Write-Host ""
 Write-Host "Done. Open a NEW terminal, then:" -ForegroundColor Yellow
-Write-Host "  r4d version"
-Write-Host ('  r4d run ' + $demoPath)
+Write-Host "  r4 version"
+Write-Host ('  r4 run ' + $demoPath)
 Write-Host ""
-Write-Host "From repo folder you can also: cd ...\roma4d ; r4d run demos\cosmic_genesis.roma4d"
-Write-Host "You can keep .roma4d files anywhere; imports resolve against R4D_PKG_ROOT."
+Write-Host "From repo folder: cd ...\roma4d ; r4 run demos\cosmic_genesis.r4s"
+Write-Host "You can keep .r4s files anywhere; imports resolve against R4D_PKG_ROOT. (.roma4d still works.)"
 Write-Host ""

@@ -483,7 +483,9 @@ func (g *llvmGen) lowerInst(in *MIRInst) error {
 			g.vals[in.Dst] = gep
 		}
 	case MIRReturn:
-		if len(in.Uses) == 0 {
+		if len(in.Uses) == 0 || g.retLLVM.Equal(types.Void) {
+			// `return None` lowers to a dummy SSA id typed `none` -> LLVM void; void functions
+			// must not `ret i64` or clang rejects the module.
 			b.NewRet(nil)
 			return nil
 		}

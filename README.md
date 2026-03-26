@@ -24,22 +24,22 @@
 ```bash
 cd roma4d
 go build -o "$(go env GOPATH)/bin/r4d" ./cmd/r4d
-r4d run examples/min_main.roma4d
+r4 run examples/min_main.r4s
 ```
 
 **Windows (recommended):** use the repo launcher so you always run **this** tree’s compiler:
 
 ```powershell
 cd roma4d
-.\r4d.ps1 run examples\min_main.roma4d
+.\r4d.ps1 run examples\min_main.r4s
 ```
 
-You should see **`r4d run: passed.`** (exit code **42** is intentional for `min_main`—it returns `42` from `main`).
+You should see **`r4 run: passed.`** (exit code **42** is intentional for `min_main`—it returns `42` from `main`).
 
 **Pipeline timings:**
 
 ```powershell
-.\r4d.ps1 run -bench examples\min_main.roma4d
+.\r4d.ps1 run -bench examples\min_main.r4s
 ```
 
 ---
@@ -77,7 +77,7 @@ brew install go llvm
 cd roma4d
 go install ./cmd/r4d ./cmd/roma4d
 export PATH="$(go env GOPATH)/bin:$PATH"
-r4d run examples/min_main.roma4d
+r4 run examples/min_main.r4s
 ```
 
 ### Linux
@@ -87,7 +87,7 @@ sudo apt install golang clang   # or your distro’s equivalents
 cd roma4d
 go install ./cmd/r4d ./cmd/roma4d
 export PATH="$(go env GOPATH)/bin:$PATH"
-r4d run examples/min_main.roma4d
+r4 run examples/min_main.r4s
 ```
 
 ### When builds fail
@@ -180,8 +180,8 @@ These forms are part of the **language story** for where/when a quantity is eval
 
 | Command | Purpose |
 |---------|---------|
-| **`r4d run <file.roma4d> [-bench] [args…]`** | Compile to a temp executable, run it. **`-bench`**: per-phase timings; **`native_run`** is wall time of the child (non-zero exit codes still count as a finished run for bench). |
-| **`r4d build <file.roma4d> [-o path] [-bench]`** | Emit a persistent executable next to `-o` (default: base name + `.exe` on Windows). |
+| **`r4 run <file.r4s> [-bench] [args…]`** | Compile to a temp executable, run it. **`-bench`**: per-phase timings; **`native_run`** is wall time of the child (non-zero exit codes still count as a finished run for bench). |
+| **`r4 build <file.r4s> [-o path] [-bench]`** | Emit a persistent executable next to `-o` (default: base name + `.exe` on Windows). |
 | **`r4d version`** | Print **`roma4d (r4d) <ver> <os>/<arch>`**. |
 | **`r4d help`** | Longer usage text (same as **`roma4d help`**). |
 
@@ -194,14 +194,14 @@ These forms are part of the **language story** for where/when a quantity is eval
 
 ## Real-world examples
 
-### Minimal native `main` (`examples/min_main.roma4d`)
+### Minimal native `main` (`examples/min_main.r4s`)
 
 ```roma4d
 def main() -> int:
     return 42
 ```
 
-### Full demo (`examples/hello_4d.roma4d`)
+### Full demo (`examples/hello_4d.r4s`)
 
 The shipped demo exercises **imports**, **SoA** particles, **list comprehensions** over **`vec4`**, **rotor** math, **`spacetime:`** + **`par`**, and an **`unsafe:`** block with MIR allocation helpers—see the file under **`roma4d/examples/`**.
 
@@ -221,26 +221,26 @@ def main() -> None:
 
 **Cross-language baselines** (same folder): **`bench_4d.py`**, **`bench_4d.rs`**, and **`run_bench_4d.ps1`** document how to compare **interpreted Python**, **rustc -O**, and **`r4d run`** on your machine. Read the header comments in **`Bench_4d.r4d`**—today’s MIR lowering does not model every Python **`for`** as a tight scalar inner loop, so numbers are **illustrative of the 4D lane**, not apples-to-apples loop parity.
 
-### Spacetime Particle Collider (`demos/spacetime_collider.roma4d`)
+### Spacetime Particle Collider (`demos/spacetime_collider.r4s`)
 
 Large-scale demo: **5,000,000** **`vec4`** worldlines, **`spacetime:`** shards (PLAY / PAUSE / **`timetravel_borrow`**), **`par for`** with dual rotors, SoA **`Particle`** beacon, **`unsafe:`** ledger scratch.
 
 ```powershell
 cd roma4d
-.\r4d.ps1 run demos\spacetime_collider.roma4d
-.\r4d.ps1 run -bench demos\spacetime_collider.roma4d
+.\r4d.ps1 run demos\spacetime_collider.r4s
+.\r4d.ps1 run -bench demos\spacetime_collider.r4s
 ```
 
 ---
 
 ## Spec reference: sample `r4d run -bench` (Collider demo)
 
-Example capture from **`demos/spacetime_collider.roma4d`** on a Windows + Clang + MinGW-w64 host (milliseconds vary by machine; sub-ms frontend phases often print as **`0.000`**).
+Example capture from **`demos/spacetime_collider.r4s`** on a Windows + Clang + MinGW-w64 host (milliseconds vary by machine; sub-ms frontend phases often print as **`0.000`**).
 
 **Pipeline phases (`-bench`):**
 
 ```
-r4d bench - <path>/demos/spacetime_collider.roma4d
+r4 run -bench <path>/demos/spacetime_collider.r4s
   load_manifest:                  0.000 ms
   read_source:                    0.000 ms
   parse:                          0.531 ms
@@ -276,7 +276,7 @@ r4d run: passed.
   * Beacon SoA column       : synchronized
   ------------------------------------------------
   >> Collider nominal. Spacetime shards committed to MIR.
-  >> For wall-clock and native_run ms: r4d run -bench demos/spacetime_collider.roma4d
+  >> For wall-clock and native_run ms: r4 run -bench demos/spacetime_collider.r4s
 
 r4d run: passed (with 1 warning).
 ```

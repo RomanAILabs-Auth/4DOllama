@@ -16,7 +16,7 @@ func roma4dRoot(t *testing.T) string {
 
 func TestCheckHelloExample(t *testing.T) {
 	root := roma4dRoot(t)
-	ex := filepath.Join(root, "examples", "hello_4d.roma4d")
+	ex := filepath.Join(root, "examples", "hello_4d.r4s")
 	res, err := compiler.CheckFile(root, ex, nil)
 	if err != nil {
 		t.Fatal(err)
@@ -57,7 +57,7 @@ def f():
 	if err := os.WriteFile(man, []byte("name = \"tmp\"\nversion = \"0.0.1\"\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	tmp := filepath.Join(dir, "x.roma4d")
+	tmp := filepath.Join(dir, "x.r4s")
 	if err := os.WriteFile(tmp, []byte(src), 0o644); err != nil {
 		t.Fatal(err)
 	}
@@ -77,7 +77,7 @@ func TestImportErrorMessage(t *testing.T) {
 	if err := os.WriteFile(man, []byte("name = \"tmp\"\nversion = \"0.0.1\"\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	tmp := filepath.Join(dir, "x.roma4d")
+	tmp := filepath.Join(dir, "x.r4s")
 	if err := os.WriteFile(tmp, []byte(src), 0o644); err != nil {
 		t.Fatal(err)
 	}

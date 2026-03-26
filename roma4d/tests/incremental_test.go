@@ -9,7 +9,7 @@ import (
 
 func TestPackageInputHashStableShape(t *testing.T) {
 	root := roma4dRoot(t)
-	entry := filepath.Join("examples", "hello_4d.roma4d")
+	entry := filepath.Join("examples", "hello_4d.r4s")
 	h1, err := compiler.PackageInputHash(root, entry)
 	if err != nil {
 		t.Fatal(err)

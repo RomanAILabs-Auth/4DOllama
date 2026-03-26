@@ -12,7 +12,7 @@ import (
 
 func TestMIRToLLVMIRHelloMarkers(t *testing.T) {
 	root := roma4dRoot(t)
-	ex := filepath.Join(root, "examples", "hello_4d.roma4d")
+	ex := filepath.Join(root, "examples", "hello_4d.r4s")
 	res, err := compiler.CheckFile(root, ex, nil)
 	if err != nil {
 		t.Fatal(err)
@@ -74,7 +74,7 @@ func TestBuildExecutableMinMain(t *testing.T) {
 		t.Skip("clang not on PATH")
 	}
 	root := roma4dRoot(t)
-	src := filepath.Join(root, "examples", "min_main.roma4d")
+	src := filepath.Join(root, "examples", "min_main.r4s")
 	out := filepath.Join(t.TempDir(), "min_main_out")
 	if runtime.GOOS == "windows" {
 		out += ".exe"

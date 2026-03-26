@@ -1,7 +1,7 @@
-# cosmic_genesis.roma4d — valid Roma4D (Cl(4,0) worldtube + par evolution)
+# cosmic_genesis.r4s — valid Roma4D (Cl(4,0) worldtube + par evolution)
 # Run from anywhere after:  .\scripts\Install-R4dUserEnvironment.ps1  (sets PATH + R4D_PKG_ROOT)
-#   r4d run C:\full\path\to\cosmic_genesis.roma4d
-# Or from repo: r4d run demos\cosmic_genesis.roma4d
+#   r4 run C:\full\path\to\cosmic_genesis.r4s
+# Or from repo: r4 run demos\cosmic_genesis.r4s
 
 def main() -> None:
     N: int = 1_000_000
@@ -36,3 +36,4 @@ def main() -> None:
     print("          End of Cosmic Genesis transmission")
     print("=============================================================")
     print("")
+    return None

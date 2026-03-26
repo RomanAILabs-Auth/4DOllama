@@ -43,37 +43,41 @@ func usage() {
 	fmt.Fprintf(os.Stderr, `roma4d — the first 4D spacetime programming language
 
 Usage:
-  r4d [command]
-  roma4d [command]
+  r4 | r4d | roma4d   [command]
 
 Commands:
-  build <file.roma4d> [-o path] [-bench]   Compile (needs clang on PATH); -bench prints pipeline timings
-  run   <file.roma4d> [-bench] [args...]   Build temp binary, run; -bench adds native_run ms
+  build <file.r4s> [-o path] [-bench]   Compile (needs clang on PATH); -bench prints pipeline timings
+  run   <file.r4s> [-bench] [args...]   Build temp binary, run; -bench adds native_run ms
   version                         Print toolchain version
   help, --help                    Show this message
 
+Source files use extension .r4s (preferred). .roma4d is still accepted.
+
 Examples:
-  r4d run examples/hello_4d.roma4d
-  r4d run -bench examples/hello_4d.roma4d
-  r4d build examples/hello_4d.roma4d -o ./hello_demo
+  r4 run examples/hello_4d.r4s
+  r4d run -bench examples/min_main.r4s
+  r4 build demos/cosmic_genesis.r4s -o ./cosmic
 
 PowerShell: type only the command line, not the leading "PS C:\...>" prompt
 (PS is an alias for Get-Process and will break pasted lines).
 
 The source file's directory tree must contain roma4d.toml (walk upward from the file),
 unless you set R4D_PKG_ROOT or ROMA4D_HOME to your Roma4D root (folder with roma4d.toml).
-Then you can run: r4d run C:\anywhere\my.roma4d
+Then you can run: r4 run C:\anywhere\sketch.r4s
 
 Windows one-shot setup (User PATH + R4D_PKG_ROOT):  .\scripts\Install-R4dUserEnvironment.ps1
 `)
 }
 
-// toolLabel returns "r4d" or "roma4d" from argv0 for user-facing messages.
+// toolLabel returns "r4", "r4d", or "roma4d" from argv0 for user-facing messages.
 func toolLabel(argv0 string) string {
 	b := filepath.Base(argv0)
 	b = strings.TrimSuffix(b, filepath.Ext(b))
 	if b == "" {
 		return "r4d"
+	}
+	if b == "r4" {
+		return "r4"
 	}
 	return b
 }
@@ -97,17 +101,20 @@ func printPassedSummary(tool, verb string, nWarn int) {
 	fmt.Fprintf(os.Stderr, "%s %s: passed (with %d %s).\n", tool, verb, nWarn, w)
 }
 
-// ensureSourceFile checks that abs is an existing regular file before we search for roma4d.toml.
+// ensureSourceFile checks that abs is an existing Roma4D source file before we search for roma4d.toml.
 func ensureSourceFile(abs string) error {
 	fi, err := os.Stat(abs)
 	if err != nil {
 		if os.IsNotExist(err) {
-			return fmt.Errorf("source file not found: %s\nhint: cd to your Roma4D repo (where roma4d.toml lives) or pass a full path to the .roma4d file", abs)
+			return fmt.Errorf("source file not found: %s\nhint: cd to your Roma4D repo (where roma4d.toml lives) or pass a full path to a .r4s file", abs)
 		}
 		return err
 	}
 	if fi.IsDir() {
-		return fmt.Errorf("expected a .roma4d file, not a directory: %s", abs)
+		return fmt.Errorf("expected a .r4s source file, not a directory: %s", abs)
+	}
+	if !compiler.IsRoma4DSourcePath(abs) {
+		return fmt.Errorf("not a Roma4D source file (use .r4s or .roma4d): %s", abs)
 	}
 	return nil
 }
@@ -146,7 +153,7 @@ func findPkgRoot(from string) (string, error) {
 			return root, nil
 		}
 	}
-	return "", fmt.Errorf("roma4d.toml not found above %s\nhint: place the .roma4d file under your Roma4D clone, or set R4D_PKG_ROOT (or ROMA4D_HOME) to the folder that contains roma4d.toml\nWindows: .\\scripts\\Install-R4dUserEnvironment.ps1 adds Go bin to PATH and sets R4D_PKG_ROOT", from)
+	return "", fmt.Errorf("roma4d.toml not found above %s\nhint: place your .r4s file under your Roma4D clone, or set R4D_PKG_ROOT (or ROMA4D_HOME) to the folder that contains roma4d.toml\nWindows: .\\scripts\\Install-R4dUserEnvironment.ps1 adds Go bin to PATH and sets R4D_PKG_ROOT", from)
 }
 
 func cmdBuild(argv0 string, args []string) int {
@@ -190,7 +197,7 @@ func cmdBuild(argv0 string, args []string) int {
 		return 1
 	}
 	if outPath == "" {
-		base := strings.TrimSuffix(filepath.Base(srcAbs), filepath.Ext(srcAbs))
+		base := compiler.StripRoma4DSourceExt(filepath.Base(srcAbs))
 		outPath = base
 		if runtime.GOOS == "windows" {
 			outPath += ".exe"
@@ -233,7 +240,7 @@ func cmdRun(argv0 string, args []string) int {
 	}
 	args = filtered
 	if len(args) < 1 {
-		fmt.Fprintf(os.Stderr, "%s run: need a .roma4d source file\n", tool)
+		fmt.Fprintf(os.Stderr, "%s run: need a .r4s (or .roma4d) source file\n", tool)
 		return 1
 	}
 	src := args[0]

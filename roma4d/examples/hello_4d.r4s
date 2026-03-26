@@ -1,7 +1,7 @@
 # Roma4D hello — Pass 3 imports + Pass 4 Ownership 2.0 (block-scoped borrow, linear SoA, par Sendable, taint).
 # Built-ins vec4 / rotor / multivector map to Cl(4,0) reference numerics.
-# Runnable: from the roma4d/ directory (with clang on PATH): `r4d run examples/hello_4d.roma4d` or `roma4d run ...`.
-# Pipeline timings: `r4d run -bench examples/hello_4d.roma4d` (parse → typecheck → MIR → LLVM → clang → native_run).
+# Runnable: from the roma4d/ directory (with clang on PATH): `r4 run examples/hello_4d.r4s` or `r4d run ...`.
+# Pipeline timings: `r4 run -bench examples/hello_4d.r4s` (parse → typecheck → MIR → LLVM → clang → native_run).
 
 from libgeo import bump, identity_v4
 

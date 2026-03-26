@@ -322,7 +322,7 @@ int quantum_server_demo(void) {
     puts("");
     puts("  === 4D QUANTUM SERVER — simulated basis snapshot (4 qubits) ===");
     printf("  mode: %s\n", loaded ? "QUANTUM_CONTINUE (state from disk)" : "fresh unitary evolution");
-    printf("  simulation_tau: 4 gate epochs (see spacetime: regions in demos/quantum_server.roma4d)\n");
+    printf("  simulation_tau: 4 gate epochs (see spacetime: regions in demos/quantum_server.r4s)\n");
     printf("  <Z> q0..q3:  %+.4f  %+.4f  %+.4f  %+.4f\n",
            qs_bloch_z_expect(0), qs_bloch_z_expect(1), qs_bloch_z_expect(2), qs_bloch_z_expect(3));
     printf("  ZZ_corr(q0,q1) marginal: %+.4f  (1=max same-bit bias, -1=max opposite)\n", qs_zz_corr_01());

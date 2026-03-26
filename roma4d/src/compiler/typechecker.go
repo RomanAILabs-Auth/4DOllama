@@ -99,7 +99,7 @@ func qualifyModule(manifestName, rootAbs, fileAbs string) string {
 	if err != nil {
 		return "__main__"
 	}
-	rel = strings.TrimSuffix(rel, filepath.Ext(rel))
+	rel = StripRoma4DSourceExt(rel)
 	rel = filepath.ToSlash(rel)
 	parts := strings.Split(rel, "/")
 	for i, p := range parts {
@@ -350,19 +350,9 @@ func (c *checker) resolveModule(dotPath string) (*ModuleType, error) {
 	if m, ok := c.loaded[dotPath]; ok {
 		return m, nil
 	}
-	candidates := []string{
-		filepath.Join(c.rootDir, strings.ReplaceAll(dotPath, ".", string(filepath.Separator))+".roma4d"),
-		filepath.Join(c.rootDir, dotPath+".roma4d"),
-	}
-	var path string
-	for _, p := range candidates {
-		if st, err := os.Stat(p); err == nil && !st.IsDir() {
-			path = p
-			break
-		}
-	}
+	path := ResolveRoma4DModuleFile(c.rootDir, dotPath)
 	if path == "" {
-		return nil, fmt.Errorf("module file not found (tried .roma4d under package root)")
+		return nil, fmt.Errorf("module file not found (tried .r4s then .roma4d under package root)")
 	}
 	b, err := os.ReadFile(path)
 	if err != nil {

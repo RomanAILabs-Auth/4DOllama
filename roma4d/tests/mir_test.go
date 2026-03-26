@@ -11,7 +11,7 @@ import (
 
 func TestLowerHelloExampleToMIR(t *testing.T) {
 	root := roma4dRoot(t)
-	ex := filepath.Join(root, "examples", "hello_4d.roma4d")
+	ex := filepath.Join(root, "examples", "hello_4d.r4s")
 	res, err := compiler.CheckFile(root, ex, nil)
 	if err != nil {
 		t.Fatal(err)
@@ -51,7 +51,7 @@ func TestLowerToMIRRejectsCheckErrors(t *testing.T) {
     x = 1
     x = y_undefined_zzz
 `
-	p := filepath.Join(dir, "bad.roma4d")
+	p := filepath.Join(dir, "bad.r4s")
 	if err := os.WriteFile(p, []byte(src), 0o644); err != nil {
 		t.Fatal(err)
 	}

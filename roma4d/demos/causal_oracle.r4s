@@ -12,7 +12,7 @@
 #    - ollama pull qwen2.5
 #    - curl on PATH (Windows 10+ ships curl.exe)
 #
-#  Run:  r4d run demos/causal_oracle.roma4d
+#  Run:  r4 run demos/causal_oracle.r4s
 #
 #  Interactive chat (same Ollama model, multi-turn):  demos/causal_oracle_chat.ps1
 # =============================================================================
