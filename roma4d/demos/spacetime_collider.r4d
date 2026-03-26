@@ -2,8 +2,8 @@
 #  SPACETIME PARTICLE COLLIDER — Roma4D reference demo
 #  5_000_000 chronons · Cl(4,0) worldlines · compile-time spacetime shards
 #
-#  Run (from roma4d/):  r4 run demos/spacetime_collider.r4s
-#  Wall-clock:         r4 run -bench demos/spacetime_collider.r4s
+#  Run (from roma4d/):  r4d demos/spacetime_collider.r4d
+#  Wall-clock:         r4 run -bench demos/spacetime_collider.r4d
 # ═══════════════════════════════════════════════════════════════════════════════
 
 from libgeo import bump, identity_v4
@@ -82,5 +82,5 @@ def main() -> None:
     print("  * Beacon SoA column       : synchronized")
     print("  ------------------------------------------------")
     print("  >> Collider nominal. Spacetime shards committed to MIR.")
-    print("  >> For wall-clock and native_run ms: r4 run -bench demos/spacetime_collider.r4s")
+    print("  >> For wall-clock and native_run ms: r4 run -bench demos/spacetime_collider.r4d")
     print("")

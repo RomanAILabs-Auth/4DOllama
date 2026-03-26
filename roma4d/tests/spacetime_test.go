@@ -56,7 +56,7 @@ func TestParseSpacetimeSyntax(t *testing.T) {
 
 func TestSpacetimeMIRMarkers(t *testing.T) {
 	root := roma4dRoot(t)
-	ex := filepath.Join(root, "examples", "hello_4d.r4s")
+	ex := filepath.Join(root, "examples", "hello_4d.r4d")
 	res, err := compiler.CheckFile(root, ex, nil)
 	if err != nil {
 		t.Fatal(err)

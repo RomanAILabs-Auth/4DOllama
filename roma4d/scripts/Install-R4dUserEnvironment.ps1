@@ -4,9 +4,13 @@
   Install r4d on your Windows user PATH and set R4D_PKG_ROOT so you can run r4d from any directory.
 
 .DESCRIPTION
-  - go install ./cmd/r4d ./cmd/roma4d into %GOPATH%\bin
+  - go install ./cmd/r4 ./cmd/r4d ./cmd/roma4d into %GOPATH%\bin
   - Append that bin directory to your *user* PATH if missing
   - Set user environment variable R4D_PKG_ROOT to this repo root (folder containing roma4d.toml)
+  - Optionally set R4D_GNU_ROOT when MSYS2 MinGW is present (Clang fallback only)
+
+  Native builds on Windows use Zig (`zig cc`) when `zig` is on PATH — install from https://ziglang.org/download/
+  If Zig is missing, Roma4D falls back to LLVM clang + MinGW (R4D_GNU_ROOT / MSYS2).
 
   After running, open a NEW PowerShell (or VS Code terminal) so PATH and env vars reload.
 
@@ -71,12 +75,32 @@ if (-not $already) {
 [Environment]::SetEnvironmentVariable("R4D_PKG_ROOT", $romaRoot, "User")
 Write-Host "Set user R4D_PKG_ROOT=$romaRoot" -ForegroundColor Green
 
-$demoPath = Join-Path $romaRoot "demos\cosmic_genesis.r4s"
+# MinGW prefix for Clang (-target *-windows-gnu): adds --gcc-toolchain + GCC builtin includes (mm_malloc.h).
+$mingwCandidates = @(
+    "C:\msys64\ucrt64",
+    "C:\msys64\mingw64",
+    "C:\msys64\clang64"
+)
+foreach ($m in $mingwCandidates) {
+    $libGcc = Join-Path $m "lib\gcc"
+    if (Test-Path $libGcc) {
+        [Environment]::SetEnvironmentVariable("R4D_GNU_ROOT", $m, "User")
+        Write-Host "Set user R4D_GNU_ROOT=$m (Clang + MinGW headers)" -ForegroundColor Green
+        break
+    }
+}
+
+$demoPath = Join-Path $romaRoot "demos\cosmic_genesis.r4d"
 Write-Host ""
 Write-Host "Done. Open a NEW terminal, then:" -ForegroundColor Yellow
 Write-Host "  r4 version"
 Write-Host ('  r4 run ' + $demoPath)
 Write-Host ""
-Write-Host "From repo folder: cd ...\roma4d ; r4 run demos\cosmic_genesis.r4s"
-Write-Host "You can keep .r4s files anywhere; imports resolve against R4D_PKG_ROOT. (.roma4d still works.)"
+Write-Host "From repo folder: cd ...\roma4d ; r4d demos\cosmic_genesis.r4d"
+Write-Host "You can keep .r4d sources anywhere; imports resolve against R4D_PKG_ROOT. (.r4s / .roma4d still work.)"
 Write-Host ""
+if (-not (Get-Command zig -ErrorAction SilentlyContinue)) {
+    Write-Host "Tip: install Zig and add it to PATH for the default Windows linker (no MSYS2 required)." -ForegroundColor DarkYellow
+    Write-Host "      https://ziglang.org/download/" -ForegroundColor DarkYellow
+    Write-Host ""
+}

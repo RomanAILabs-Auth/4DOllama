@@ -352,7 +352,7 @@ func (c *checker) resolveModule(dotPath string) (*ModuleType, error) {
 	}
 	path := ResolveRoma4DModuleFile(c.rootDir, dotPath)
 	if path == "" {
-		return nil, fmt.Errorf("module file not found (tried .r4s then .roma4d under package root)")
+		return nil, fmt.Errorf("module file not found (tried .r4d, .r4s, .roma4d under package root)")
 	}
 	b, err := os.ReadFile(path)
 	if err != nil {

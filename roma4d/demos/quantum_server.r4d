@@ -12,7 +12,7 @@
 #    - curl on PATH
 #
 #  Run (from roma4d/):
-#    r4 run demos/quantum_server.r4s
+#    r4d demos/quantum_server.r4d
 #
 #  Optional env (shell):
 #    QUANTUM_QUERY="What is P(q0=1)?"   — question for the model
@@ -20,7 +20,7 @@
 #
 #  PowerShell example:
 #    $env:QUANTUM_QUERY = "Compare PAST vs PRESENT entanglement on q0,q1."
-#    .\r4d.ps1 run demos\quantum_server.r4s
+#    .\r4d.ps1 demos\quantum_server.r4d
 # =============================================================================
 
 from libgeo import bump, identity_v4

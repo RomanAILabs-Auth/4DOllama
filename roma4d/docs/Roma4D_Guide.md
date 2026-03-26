@@ -1,6 +1,6 @@
 # Roma4D Programming Guide
 
-**Purpose:** This document is the **authoritative reference** for **Roma4D** sources. Canonical extension is **`.r4s`**; **`.roma4d`** remains accepted for compatibility. Use it for **humans** and **LLMs** — follow it literally to avoid invalid “Python disguised as Roma4D.”
+**Purpose:** This document is the **authoritative reference** for **Roma4D** sources. Official extension is **`.r4d`**. Legacy **`.r4s`** and **`.roma4d`** remain accepted. Use it for **humans** and **LLMs** — follow it literally to avoid invalid “Python disguised as Roma4D.”
 
 **Toolchain version:** `0.1.0` (see `roma4d.toml` and `internal/cli/cli.go`).  
 **Language edition:** `2025` (manifest field; describes the staged feature set, not calendar year alone).
@@ -32,7 +32,7 @@
 17. [Help, debugging, and common failures](#17-help-debugging-and-common-failures)
 18. [LLM checklist (generate valid Roma4D)](#18-llm-checklist-generate-valid-roma4d)
 19. [Example programs in this repo](#19-example-programs-in-this-repo)
-20. [File extensions: `.r4s` and legacy `.roma4d`](#20-file-extensions-r4s-and-legacy-roma4d)
+20. [File extensions: `.r4d` and legacy `.r4s` / `.roma4d`](#20-file-extensions-r4d-and-legacy-r4s--roma4d)
 21. [Python vs Roma4D — invalid patterns (do not generate)](#21-python-vs-roma4d--invalid-patterns-do-not-generate)
 22. [Compiler and linker error catalog](#22-compiler-and-linker-error-catalog)
 23. [Ergonomics: `r4`, PATH, `R4D_PKG_ROOT`](#23-ergonomics-r4-path-r4d_pkg_root)
@@ -57,8 +57,8 @@ If you think in **columns of data**, **time-indexed values**, and **parallel tra
 
 ## 1. How the compiler runs
 
-- **Inputs:** One **`.r4s`** (or legacy **`.roma4d`**) source file per build/run, plus any imported modules under the **package root** (directory containing `roma4d.toml`). Imports resolve to **`name.r4s` first**, then **`name.roma4d`**.
-- **Pipeline:** `lexer → parser → typecheck → Ownership 2.0 pass → MIR → LLVM IR → clang` (compile + link).
+- **Inputs:** One **`.r4d`** (or legacy **`.r4s`** / **`.roma4d`**) source file per build/run, plus any imported modules under the **package root** (directory containing `roma4d.toml`). Imports resolve to **`name.r4d` first**, then **`.r4s`**, then **`.roma4d`**.
+- **Pipeline:** `lexer → parser → typecheck → Ownership 2.0 pass → MIR → LLVM IR` → **Windows:** `zig cc` (default) or `clang` + MinGW; **Unix:** `clang` (compile + link).
 - **Output:** Native executable (Windows: `.exe`). Link step may compile and link `rt/roma4d_rt.c` for runtime symbols (`print`, `vec4`, `Particle`, etc.).
 - **Backend:** `[build] backend = "llvm"` in `roma4d.toml`. CUDA / GPU paths are roadmap; some MIR metadata exists for GPU-oriented `spacetime` + `par` regions.
 
@@ -77,9 +77,9 @@ roma4d/
   src/compiler/        # typecheck, MIR, LLVM, link driver
   src/parser/          # lexer + parser
   rt/roma4d_rt.c       # C runtime linked into user programs
-  libgeo.r4s           # example library module (prefer .r4s)
-  examples/*.r4s
-  demos/*.r4s
+  libgeo.r4d           # example library module (official .r4d)
+  examples/*.r4d
+  demos/*.r4d
   debug/               # build failure logs (generated)
 ```
 
@@ -97,14 +97,17 @@ roma4d/
 
 **Binaries:** **`r4`** (short), **`r4d`**, and **`roma4d`** share one implementation (`internal/cli`). Prefer **`r4`** for day-to-day use — same flags as `r4d`.
 
+**Forgiving Expert mode (default):** On compile failure, the CLI may append **native** Roma4D hints (rules in `src/ai/expert.go`) — no external LLM, no network. Use **`--strict`** anywhere in the argv to print **raw** errors only (CI, scripting).
+
 | Command | Meaning |
 |--------|---------|
 | `r4 help` / `r4d help` | Usage text. |
 | `r4 version` | Prints `roma4d (r4d) <ver> <os>/<arch>` (banner text unchanged). |
-| `r4 build <file.r4s> [-o path] [-bench]` | Compile to a native executable. Basename strips **`.r4s`** / **`.roma4d`**. |
-| `r4 run <file.r4s> [-bench] [args...]` | Temp build + run. |
+| `r4d <file.r4d> [args...]` | Shorthand for **`r4d run`** (same Expert / `--strict` behavior). |
+| `r4 build [--strict] <file.r4d> [-o path] [-bench]` | Compile to a native executable. Basename strips **`.r4d`** / **`.r4s`** / **`.roma4d`**. |
+| `r4 run [--strict] <file.r4d> [-bench] [args...]` | Temp build + run. |
 
-**`-bench`:** Phase timings (`load_manifest`, `parse`, `typecheck`, `lower_*`, `clang_*`, and `native_run` for `run`).
+**`-bench`:** Phase timings (`load_manifest`, `parse`, `typecheck`, `lower_*`, `zig_*` or `clang_*`, and `native_run` for `run`).
 
 **PowerShell note (Windows):** When pasting commands, **do not** paste the `PS C:\...>` prompt. On some systems `PS` is an alias and breaks the line.
 
@@ -125,8 +128,8 @@ roma4d/
 3. **Examples:**
 
    ```powershell
-   r4 run C:\Users\You\Desktop\4DEngine\roma4d\demos\cosmic_genesis.r4s
-   r4 run C:\Users\You\Desktop\my_sketch.r4s
+   r4 run C:\Users\You\Desktop\4DEngine\roma4d\demos\cosmic_genesis.r4d
+   r4 run C:\Users\You\Desktop\my_sketch.r4d
    ```
 
    Imports (`from libgeo import ...`) resolve under **`R4D_PKG_ROOT`**, not next to the sketch.
@@ -138,7 +141,7 @@ roma4d/
 | `R4D_PKG_ROOT` | Fallback package root if `roma4d.toml` is not found above the source file. |
 | `ROMA4D_HOME` | Same as `R4D_PKG_ROOT`. |
 
-**Relative paths:** `r4 run demos\foo.r4s` is resolved from **cwd**. Wrong directory → “file not found”; use a **full path** or `cd` to the repo first.
+**Relative paths:** `r4 run demos\foo.r4d` is resolved from **cwd**. Wrong directory → “file not found”; use a **full path** or `cd` to the repo first.
 
 ---
 
@@ -146,10 +149,10 @@ roma4d/
 
 ### 4.1 Module file resolution
 
-Given `from foo.bar import x` or `import foo.bar`, the checker resolves **`foo.bar`** to a file under **package root**. For each candidate path it tries **`.r4s` first**, then **`.roma4d`**:
+Given `from foo.bar import x` or `import foo.bar`, the checker resolves **`foo.bar`** to a file under **package root**. For each candidate path it tries **`.r4d` first**, then **`.r4s`**, then **`.roma4d`**:
 
-1. `pkgRoot/foo/bar.r4s` or `pkgRoot/foo/bar.roma4d`
-2. `pkgRoot/foo.bar.r4s` or `pkgRoot/foo.bar.roma4d`
+1. `pkgRoot/foo/bar.r4d`, `pkgRoot/foo/bar.r4s`, or `pkgRoot/foo/bar.roma4d`
+2. `pkgRoot/foo.bar.r4d`, `pkgRoot/foo.bar.r4s`, or `pkgRoot/foo.bar.roma4d`
 
 If none exist → **ImportError**.
 
@@ -163,11 +166,11 @@ If none exist → **ImportError**.
 
 When loading a submodule, the compiler collects **top-level** `def` and `class` names into `Exports`. It does **not** fully type-check the submodule body in the same pass as a full second compilation unit (v0 behavior); still, **only names present as top-level defs/classes** are importable.
 
-**Practical rule:** Put shared functions and classes at **module top level** in `libfoo.r4s` (or legacy `libfoo.roma4d`).
+**Practical rule:** Put shared functions and classes at **module top level** in `libfoo.r4d` (or legacy `libfoo.r4s` / `libfoo.roma4d`).
 
 ### 4.4 Example
 
-`libgeo.r4s` at package root:
+`libgeo.r4d` at package root:
 
 ```roma4d
 def bump(n: int) -> int:
@@ -244,7 +247,7 @@ These are **predefined** in the typechecker (`seedBuiltins`). Names are case-sen
 | `quantum_server_demo` | `()` | `int` — quantum snapshot + Ollama (see §15). |
 | `True`, `False`, `None` | literals | `bool` / `none` |
 
-**Important:** There is **no** general dynamic string runtime for building HTTP bodies inside **`.r4s`** alone; demos that need JSON use **C + curl** in `roma4d_rt.c`.
+**Important:** There is **no** general dynamic string runtime for building HTTP bodies inside **`.r4d`** alone; demos that need JSON use **C + curl** in `roma4d_rt.c`.
 
 ---
 
@@ -293,7 +296,7 @@ class Particle:
 
 ### 10.1 Linear `soa` field access
 
-Pattern (from `examples/hello_4d.r4s`):
+Pattern (from `examples/hello_4d.r4d`):
 
 ```roma4d
 cell: Particle = Particle()
@@ -381,7 +384,7 @@ Linked when present at `pkgRoot/rt/roma4d_rt.c`. Provides C symbols expected by 
 
 - **`print`** → `puts`
 - **`vec4`**, **`rotor`**, **`multivector`**, **`Particle`**
-- **`bump`**, **`identity_v4`** — if you add matching defs, prefer **Roma4D `lib*.r4s`** for source-level libraries; C duplicates are for ABI demos only.
+- **`bump`**, **`identity_v4`** — if you add matching defs, prefer **Roma4D `lib*.r4d`** for source-level libraries; C duplicates are for ABI demos only.
 - **`identity_v4`**, geometric stubs as needed for lowering
 - **`ollama_demo`**, **`quantum_server_demo`** — shell out to **`curl`** (see §15)
 
@@ -394,8 +397,8 @@ Linked when present at `pkgRoot/rt/roma4d_rt.c`. Provides C symbols expected by 
 ### 15.1 `ollama_demo()`
 
 - **Requires:** `curl` on `PATH`, local **Ollama** (`ollama serve`, default `http://127.0.0.1:11434`), model pulled (e.g. `qwen2.5`).
-- **Behavior:** Fixed JSON body embedded in C (because dynamic host strings are not generally available in **`.r4s`** yet).
-- **See:** `demos/causal_oracle.r4s`.
+- **Behavior:** Fixed JSON body embedded in C (because dynamic host strings are not generally available in **`.r4d`** yet).
+- **See:** `demos/causal_oracle.r4d`.
 
 ### 15.2 `quantum_server_demo()`
 
@@ -403,7 +406,7 @@ Linked when present at `pkgRoot/rt/roma4d_rt.c`. Provides C symbols expected by 
 - **Environment variables:**
   - **`QUANTUM_QUERY`** — optional user question (sanitized for JSON).
   - **`QUANTUM_CONTINUE=1`** — load/save **4-qubit statevector** snapshot file under `TEMP` / `TMPDIR` for **cross-run** continuity.
-- **See:** `demos/quantum_server.r4s`.
+- **See:** `demos/quantum_server.r4d`.
 
 **Security note:** These call **`system("curl ...")`** from C — only as trusted as your local shell and paths.
 
@@ -411,7 +414,7 @@ Linked when present at `pkgRoot/rt/roma4d_rt.c`. Provides C symbols expected by 
 
 ## 16. Compilation pipeline (mental model)
 
-1. **Parse** `.r4s` / `.roma4d` → AST (`src/parser`).
+1. **Parse** `.r4d` / `.r4s` / `.roma4d` → AST (`src/parser`).
 2. **Typecheck** → types on nodes; imports resolved; builtins known (`src/compiler/typechecker.go`).
 3. **Ownership 2.0** → linear SoA + borrow conflicts (`src/compiler/ownership.go`).
 4. **Lower to MIR** (`src/compiler/ast_to_mir.go`).
@@ -419,7 +422,7 @@ Linked when present at `pkgRoot/rt/roma4d_rt.c`. Provides C symbols expected by 
 6. **Clang:**
    - Compile `.ll` → `.o`
    - Link `.o` + `roma4d_rt.c` (+ optional CUDA stub) → executable  
-7. **Windows:** `-target x86_64-pc-windows-gnu` (or arm/i686 variants) → **MinGW** linking, not MSVC by default.
+7. **Windows:** **`zig cc -target *-windows-gnu`** (default) or **clang** with the same triple → **MinGW** ABI, not MSVC by default.
 8. **Unix:** linker adds **`-lm`** for math in `roma4d_rt.c`.
 
 ---
@@ -432,7 +435,7 @@ On failure, the driver appends a structured record to:
 
 **`pkgRoot/debug/last_build_failure.log`**
 
-It includes **stage** (`clang_compile`, `clang_link`, etc.), **full clang argv**, **stderr**, and a **head slice of LLVM IR** for context.
+It includes **stage** (`zig_compile`, `zig_link`, `clang_compile`, `clang_link`, etc.), **full tool argv**, **stderr**, and a **head slice of LLVM IR** for context.
 
 ### 17.2 `R4D_DEBUG`
 
@@ -446,20 +449,24 @@ Mirrors the same failure block to **stderr** immediately.
 
 ### 17.3 “`roma4d.toml` not found”
 
-- Pass a **full path** to a **`.r4s`** file that lives **under** a directory tree containing `roma4d.toml`, **or**
-- Set **`R4D_PKG_ROOT`** (or **`ROMA4D_HOME`**) to the folder that **contains** `roma4d.toml`, then run **`r4 run C:\anywhere\sketch.r4s`**.
+- Pass a **full path** to a **`.r4d`** file that lives **under** a directory tree containing `roma4d.toml`, **or**
+- Set **`R4D_PKG_ROOT`** (or **`ROMA4D_HOME`**) to the folder that **contains** `roma4d.toml`, then run **`r4 run C:\anywhere\sketch.r4d`**.
 - **Windows:** Run **`.\scripts\Install-R4dUserEnvironment.ps1`** once (see §3) to set user **`R4D_PKG_ROOT`** and put **`r4d`** on PATH.
 
-### 17.4 Clang not found
+### 17.4 Zig (Windows default) and Clang
 
-- Install **LLVM**; ensure **`clang`** on `PATH`.
-- The finder tries `clang`, `clang-18`, … `clang.exe`.
+- **Windows (recommended):** Install [**Zig**](https://ziglang.org/download/) and ensure **`zig` / `zig.exe`** is on `PATH`. Roma4D runs **`zig cc`** to compile `.ll` and link **`roma4d_rt.c`** (no separate MinGW install required).
+- **Override:** set **`R4D_ZIG`** to the full path of the `zig` executable if it is not on `PATH`.
+- **Windows fallback:** if Zig is missing, install **LLVM** and put **`clang`** on `PATH`, plus **MinGW-w64** (see §17.5).
+- **Linux/macOS:** **`clang`** on `PATH` (`clang`, `clang-18`, … `clang.exe` on Windows fallback).
 
-### 17.5 Windows: MinGW / `mm_malloc.h` / link errors
+### 17.5 Windows: MinGW / `mm_malloc.h` / link errors (Clang fallback only)
 
-**Symptom:** Clang includes **`msys64/ucrt64/include/stdlib.h`** but fails on **`mm_malloc.h`**.
+**When:** You are on **Clang fallback** (Zig not installed). **Symptom:** Clang includes **`msys64/ucrt64/include/stdlib.h`** but fails on **`mm_malloc.h`**.
 
-**Fix (automatic in recent drivers):** The linker adds **`--gcc-toolchain=...`** when it detects a MinGW root (via `gcc` on `PATH` or common MSYS2 install paths).
+**Fix (automatic for clang):** The driver adds **`--gcc-toolchain=...`** and **`-isystem`** for GCC builtin and MinGW **`include`**. Easiest alternative: **install Zig** (§17.4) and avoid this path.
+
+**Prefer Zig on Windows** so you do not need MSYS2 for normal builds.
 
 **Override / non-default install:**
 
@@ -495,8 +502,8 @@ Roma4D uses **indentation-based** blocks like Python. **Tabs vs spaces:** stay c
 
 When asked to write Roma4D, follow this checklist **in order**:
 
-1. **File extension:** **`.r4s`** (canonical). `.roma4d` only if the user explicitly wants legacy.
-2. **Package root:** `roma4d.toml` above the file **or** user has **`R4D_PKG_ROOT`** set. Imports resolve from that root (`libgeo.r4s`, etc.).
+1. **File extension:** **`.r4d`** (official). Legacy **`.r4s`** / **`.roma4d`** only if the user explicitly wants them.
+2. **Package root:** `roma4d.toml` above the file **or** user has **`R4D_PKG_ROOT`** set. Imports resolve from that root (`libgeo.r4d`, etc.).
 3. **Imports:** **`from mod import a, b`** only — **never** `import *` (hard error).
 4. **`main`:** `def main() -> None:` or `-> int:`. For `int`, **always** `return` an integer. For `None`, `return None` is allowed and lowers to void.
 5. **4D math:** **`vec4`**, **`rotor`**, **`multivector`**; `* ^ |` are **geometric** on those types — **not** Python `*` / `^` / `|` on ints by mistake inside GA expressions.
@@ -505,12 +512,12 @@ When asked to write Roma4D, follow this checklist **in order**:
 8. **`unsafe:`** only for **`mir_alloc` / `mir_ptr_*`** and C-linked demos.
 9. **`print`:** **string literals** (and what the runtime supports). **No** `print(f"...")`, **no** `print` of arbitrary formatted floats unless you add C support.
 10. **Ollama demos:** **`ollama_demo()`**, **`quantum_server_demo()`** — document **curl**, **Ollama**, env vars (**`QUANTUM_QUERY`**, etc.).
-11. **Run command:** **`r4 run path/to/file.r4s`**; failures → **`debug/last_build_failure.log`**, **`R4D_DEBUG=1`**.
+11. **Run command:** **`r4d path/to/file.r4d`** or **`r4 run path/to/file.r4d`**; use **`--strict`** for raw errors only. Failures → **`debug/last_build_failure.log`**, **`R4D_DEBUG=1`**.
 
 **Safe boilerplate (copy-paste safe):**
 
 ```text
-# file: sketch.r4s
+# file: sketch.r4d
 from libgeo import bump, identity_v4
 
 class Particle:
@@ -540,24 +547,25 @@ def main() -> None:
 
 | Path | Role |
 |------|------|
-| `examples/min_main.r4s` | Smallest native `main` → `int` (**exit 42**). |
-| `examples/hello_4d.r4s` | Full **4D + SoA + spacetime + par + unsafe** tour. |
-| `demos/spacetime_collider.r4s` | Large **worldtube** + narrative **frames**. |
-| `demos/causal_oracle.r4s` | **`ollama_demo()`** + spacetime story. |
-| `demos/quantum_server.r4s` | **`quantum_server_demo()`** + **QUANTUM_*** env vars. |
-| `demos/cosmic_genesis.r4s` | Shorter **worldtube + par** demo. |
-| `libgeo.r4s` | Importable library (`bump`, `identity_v4`). |
+| `examples/min_main.r4d` | Smallest native `main` → `int` (**exit 42**). |
+| `examples/hello_4d.r4d` | Full **4D + SoA + spacetime + par + unsafe** tour. |
+| `demos/spacetime_collider.r4d` | Large **worldtube** + narrative **frames**. |
+| `demos/causal_oracle.r4d` | **`ollama_demo()`** + spacetime story. |
+| `demos/quantum_server.r4d` | **`quantum_server_demo()`** + **QUANTUM_*** env vars. |
+| `demos/cosmic_genesis.r4d` | Shorter **worldtube + par** demo. |
+| `libgeo.r4d` | Importable library (`bump`, `identity_v4`). |
 
 ---
 
-## 20. File extensions: `.r4s` and legacy `.roma4d`
+## 20. File extensions: `.r4d` and legacy `.r4s` / `.roma4d`
 
 | Extension | Status |
 |-----------|--------|
-| **`.r4s`** | **Preferred.** Short for “Roma4D source.” Use in all new files and docs. |
-| **`.roma4d`** | **Legacy, still accepted** by `r4` / `r4d` / `roma4d` and by **module resolution** (tried after `.r4s`). |
+| **`.r4d`** | **Official.** Use in all new files and docs. |
+| **`.r4s`** | **Legacy, still accepted** (short suffix). |
+| **`.roma4d`** | **Legacy, still accepted** (original long suffix). |
 
-**Module resolution order:** For import `foo.bar`, the driver looks for `foo/bar.r4s`, then `foo/bar.roma4d`, then dotted-path variants — see `ResolveRoma4DModuleFile` in `src/compiler/source_ext.go`.
+**Module resolution order:** For import `foo.bar`, the driver tries **`foo/bar.r4d`**, then **`foo/bar.r4s`**, then **`foo/bar.roma4d`**, then dotted-path variants — see `ResolveRoma4DModuleFile` in `src/compiler/source_ext.go`.
 
 **Wrong extensions:** `.py`, `.rs`, `.c` are **not** Roma4D sources — the CLI rejects them with `not a Roma4D source file`.
 
@@ -574,7 +582,7 @@ LLMs often emit **Python** by reflex. The following are **wrong in Roma4D** unle
 | **`[Vec4; N]`** / **`Vec4(...)`** | Rust / C++ syntax | **`list[vec4]`**, **`vec4(x=..., y=..., z=..., w=...)`** |
 | **`time()`** / **`elapsed = time() - start`** | No such runtime | **`time`** is **`t`** (compile-time token), not a callable |
 | **Nested `spacetime:`** inside `for` | Not the demo / MIR shape | One outer **`spacetime:`**, **`par for`** inside |
-| **`import numpy`**, **`import os`** | No arbitrary stdlib | **`from libgeo import ...`** or local **`.r4s`** modules only |
+| **`import numpy`**, **`import os`** | No arbitrary stdlib | **`from libgeo import ...`** or local **`.r4d`** modules only |
 | **`import *`** | Unsupported | **`from mod import a, b`** |
 | **`def foo():`** without **`-> type`** | Often still parsed but avoid for clarity | **`def foo() -> None:`** with annotations on public APIs |
 | **`cosmos[i] = cosmos[i] * rot`** in **`par for i in range(N)`** | Subscript + par capture differs from **`par for p in list`** pattern | **`par for p in cosmos:`** then **`p = p * rot`** (see demos) |
@@ -588,7 +596,7 @@ LLMs often emit **Python** by reflex. The following are **wrong in Roma4D** unle
 | **`if __name__`** | N/A | Same |
 | **`numpy.array`**, **`torch`** | Wrong language | **`list[vec4]`** + **`par`** |
 
-If the user asks for “Python with 4D flavor,” **refuse** and output **valid `.r4s`** from this spec.
+If the user asks for “Python with 4D flavor,” **refuse** and output **valid `.r4d`** from this spec.
 
 ---
 
@@ -599,14 +607,14 @@ Use this table to map **stderr** to **fixes** (also see §17).
 | Symptom / message | Likely cause | Fix |
 |-------------------|--------------|-----|
 | `source file not found` | Wrong **cwd** or typo | Use **absolute path** or `cd` to repo |
-| `not a Roma4D source file` | `.py` / `.txt` / wrong ext | Rename to **`.r4s`** |
+| `not a Roma4D source file` | `.py` / `.txt` / wrong ext | Rename to **`.r4d`** |
 | `roma4d.toml not found` | File outside package tree | Move under root or set **`R4D_PKG_ROOT`** |
-| `ImportError: No module named` | Missing **`libfoo.r4s`** | Create module or fix **`from`** name |
+| `ImportError: No module named` | Missing **`libfoo.r4d`** (or legacy suffix) | Create module or fix **`from`** name |
 | `import * is not supported` | Python habit | List names explicitly |
 | `UseAfterMoveError` / `soa field` | Second read without write-back | Reassign **`cell.pos = ...`** before re-read |
 | `BorrowError` / `mutborrow` | Overlapping borrows | Shrink borrow scope; follow §10 |
 | `TaintError` | `print` taint into **linear** slot | Do not flow **`print`** into **`soa`** |
-| `clang: ... mm_malloc.h` | Windows Clang + MSYS headers | **`R4D_GNU_ROOT`** or **`Install-R4dUserEnvironment`** + MinGW on PATH |
+| `clang: ... mm_malloc.h` | Clang fallback + MSYS headers | Install **Zig** (default), or **`R4D_GNU_ROOT`** / MinGW on PATH |
 | `undefined reference` / link fail | Missing CRT / **`-lm`** | Linux: driver adds **`-lm`**; Windows: MinGW **`bin`** on PATH |
 | LLVM `ret` / `void` mismatch | (Fixed in toolchain) **`return None`** in **`-> None`** | Update **`r4`**; explicit void return lowering |
 | `synthesized return` | Missing **`return`** in **`-> int`** | Add **`return 0`** or real exit code |
@@ -626,13 +634,13 @@ Use this table to map **stderr** to **fixes** (also see §17).
 
 ## 24. LLM hard rules (non-negotiable)
 
-1. Output **only** syntactically valid **Roma4D** **`.r4s`** (unless user explicitly requests `.roma4d`).
+1. Output **only** syntactically valid **Roma4D** **`.r4d`** (unless user explicitly requests a legacy extension).
 2. **Never** pretend **`print`**, **`time()`**, or **f-strings** behave like CPython.
 3. **Never** invent **stdlib** imports beyond **`from <local_module> import ...`**.
 4. **Always** use **`vec4` / `rotor` / `multivector`** types for **Cl(4,0)** — never **`Vec4`** / **`float4`**.
 5. **Always** end **`-> int`** `main` with an **integer `return`**.
 6. If unsure about a feature, **omit** it — prefer **`print("ok")`** + **`pass`** over hallucinated APIs.
-7. After code, tell the user to run **`r4 run <file>.r4s`** and to read **`last_build_failure.log`** on failure.
+7. After code, tell the user to run **`r4d <file>.r4d`** (or **`r4 run`**) and to read **`last_build_failure.log`** on failure.
 
 ---
 
@@ -641,9 +649,11 @@ Use this table to map **stderr** to **fixes** (also see §17).
 When the compiler changes (new builtins, stricter ownership, new keywords), update:
 
 - `src/compiler/typechecker.go` — `seedBuiltins`, import rules.
-- `src/compiler/source_ext.go` — **`.r4s` / `.roma4d`** resolution.
+- `src/compiler/source_ext.go` — **`.r4d` / `.r4s` / `.roma4d`** resolution.
+- `src/ai/expert.go` — forgiving **Expert** hints (native rules; no LLM).
 - `src/parser/token.go` — keyword set.
 - `src/compiler/codegen_llvm.go` — void returns, ABI.
+- `src/compiler/llvm_link.go` — **Zig `cc` (Windows)** / **clang** driver for `.ll` + `rt/*.c`.
 - `internal/cli/cli.go` — help text, **`ensureSourceFile`**.
 - `rt/roma4d_rt.c` — runtime symbols and demos.
 - **This guide** — §7, §14–§15, §17–§24.

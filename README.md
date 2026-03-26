@@ -10,7 +10,7 @@
 - 🧮 **Native 4D algebra** — **`vec4`**, **`rotor`**, **`multivector`**, and **`*` / `^` / `|`** as language primitives, not FFI libraries.
 - 🔒 **Ownership 2.0** — Linear moves and borrows that match **SoA** columns and **`par`** sendability rules.
 - 🌌 **Spacetime regions** — **`spacetime:`** blocks and **`@ t`** for **compile-time** temporal reasoning; lowering stays on the **4D LLVM** path today.
-- ⚙️ **Fast native binaries** — **MIR → LLVM IR → clang**; **`-bench`** prints **`load_manifest`** … **`clang_link_exe`** and **`native_run`** (`r4d run` only).
+- ⚙️ **Fast native binaries** — **MIR → LLVM IR** then **Windows: `zig cc`** (default) or **clang**; **Unix: clang**; **`-bench`** prints **`zig_*` / `clang_*`** and **`native_run`** (`r4d run` only).
 - 🛠️ **Practical toolchain** — **`r4d`** / **`roma4d`**, **`roma4d.toml`**, and **`debug/last_build_failure.log`** when something breaks.
 
 **Full programming reference (share with an LLM):** [`roma4d/docs/Roma4D_Guide.md`](roma4d/docs/Roma4D_Guide.md).
@@ -24,14 +24,14 @@
 ```bash
 cd roma4d
 go build -o "$(go env GOPATH)/bin/r4d" ./cmd/r4d
-r4 run examples/min_main.r4s
+r4d examples/min_main.r4d
 ```
 
 **Windows (recommended):** use the repo launcher so you always run **this** tree’s compiler:
 
 ```powershell
 cd roma4d
-.\r4d.ps1 run examples\min_main.r4s
+.\r4d.ps1 examples\min_main.r4d
 ```
 
 You should see **`r4 run: passed.`** (exit code **42** is intentional for `min_main`—it returns `42` from `main`).
@@ -39,7 +39,7 @@ You should see **`r4 run: passed.`** (exit code **42** is intentional for `min_m
 **Pipeline timings:**
 
 ```powershell
-.\r4d.ps1 run -bench examples\min_main.r4s
+.\r4d.ps1 run -bench examples\min_main.r4d
 ```
 
 ---
@@ -57,8 +57,8 @@ You should see **`r4 run: passed.`** (exit code **42** is intentional for `min_m
 
 ### Windows
 
-1. Install **Go**, **LLVM/Clang** (e.g. official installer), and **MinGW-w64** (e.g. [MSYS2](https://www.msys2.org/) package `mingw-w64-ucrt-x86_64-gcc`).
-2. Put **clang** and **MinGW `bin`** on your **user PATH**.
+1. Install **Go** and [**Zig**](https://ziglang.org/download/) on **PATH** (recommended on Windows).
+2. **Fallback:** LLVM **Clang** + **MinGW-w64** (e.g. MSYS2) if not using Zig.
 3. From `roma4d/`, run **`.\r4d.ps1 …`** or build with:
 
    ```powershell
@@ -77,7 +77,7 @@ brew install go llvm
 cd roma4d
 go install ./cmd/r4d ./cmd/roma4d
 export PATH="$(go env GOPATH)/bin:$PATH"
-r4 run examples/min_main.r4s
+r4d examples/min_main.r4d
 ```
 
 ### Linux
@@ -87,12 +87,12 @@ sudo apt install golang clang   # or your distro’s equivalents
 cd roma4d
 go install ./cmd/r4d ./cmd/roma4d
 export PATH="$(go env GOPATH)/bin:$PATH"
-r4 run examples/min_main.r4s
+r4d examples/min_main.r4d
 ```
 
 ### When builds fail
 
-- Open **`roma4d/debug/last_build_failure.log`** (clang command, stderr, LLVM IR head).
+- Open **`roma4d/debug/last_build_failure.log`** (zig/clang command, stderr, LLVM IR head).
 - Set **`R4D_DEBUG=1`** to mirror the same diagnostics on stderr.
 
 ---
@@ -105,7 +105,7 @@ Roma4D sits at the intersection of three ideas:
 2. **A systems core**: explicit layout (**SoA**), ownership-friendly field access, and **`par`** regions the compiler can reason about for **SIMD** and future **GPU** backends.
 3. **A native 4D spine**: rotors, multivectors, and vectors live in **Cl(4,0)** and lower to **LLVM** with **SIMD-friendly** patterns where the MIR pipeline enables it.
 
-The compiler is implemented in **Go** today (`lexer` → `parser` → **typecheck + Ownership 2.0** → **MIR** → **LLVM IR** → **clang**). Long term, the roadmap includes incremental compilation, richer GPU lowering, and a self-hosted path—see **`roma4d/README.md`** (short pointer) and the **ten-pass** list in the source tree.
+The compiler is implemented in **Go** today (`lexer` → `parser` → **typecheck + Ownership 2.0** → **MIR** → **LLVM IR** → **Zig `cc` (Windows)** / **`clang`**). Long term, the roadmap includes incremental compilation, richer GPU lowering, and a self-hosted path—see **`roma4d/README.md`** (short pointer) and the **ten-pass** list in the source tree.
 
 ---
 
@@ -180,8 +180,8 @@ These forms are part of the **language story** for where/when a quantity is eval
 
 | Command | Purpose |
 |---------|---------|
-| **`r4 run <file.r4s> [-bench] [args…]`** | Compile to a temp executable, run it. **`-bench`**: per-phase timings; **`native_run`** is wall time of the child (non-zero exit codes still count as a finished run for bench). |
-| **`r4 build <file.r4s> [-o path] [-bench]`** | Emit a persistent executable next to `-o` (default: base name + `.exe` on Windows). |
+| **`r4d <file.r4d> [args…]`** / **`r4 run [--strict] <file.r4d> [-bench] [args…]`** | Temp build + run. Default: forgiving **Expert** hints on failure; **`--strict`**: raw errors only. |
+| **`r4 build [--strict] <file.r4d> [-o path] [-bench]`** | Emit a persistent executable next to `-o` (default: base name + `.exe` on Windows). |
 | **`r4d version`** | Print **`roma4d (r4d) <ver> <os>/<arch>`**. |
 | **`r4d help`** | Longer usage text (same as **`roma4d help`**). |
 
@@ -194,14 +194,14 @@ These forms are part of the **language story** for where/when a quantity is eval
 
 ## Real-world examples
 
-### Minimal native `main` (`examples/min_main.r4s`)
+### Minimal native `main` (`examples/min_main.r4d`)
 
 ```roma4d
 def main() -> int:
     return 42
 ```
 
-### Full demo (`examples/hello_4d.r4s`)
+### Full demo (`examples/hello_4d.r4d`)
 
 The shipped demo exercises **imports**, **SoA** particles, **list comprehensions** over **`vec4`**, **rotor** math, **`spacetime:`** + **`par`**, and an **`unsafe:`** block with MIR allocation helpers—see the file under **`roma4d/examples/`**.
 
@@ -221,26 +221,26 @@ def main() -> None:
 
 **Cross-language baselines** (same folder): **`bench_4d.py`**, **`bench_4d.rs`**, and **`run_bench_4d.ps1`** document how to compare **interpreted Python**, **rustc -O**, and **`r4d run`** on your machine. Read the header comments in **`Bench_4d.r4d`**—today’s MIR lowering does not model every Python **`for`** as a tight scalar inner loop, so numbers are **illustrative of the 4D lane**, not apples-to-apples loop parity.
 
-### Spacetime Particle Collider (`demos/spacetime_collider.r4s`)
+### Spacetime Particle Collider (`demos/spacetime_collider.r4d`)
 
 Large-scale demo: **5,000,000** **`vec4`** worldlines, **`spacetime:`** shards (PLAY / PAUSE / **`timetravel_borrow`**), **`par for`** with dual rotors, SoA **`Particle`** beacon, **`unsafe:`** ledger scratch.
 
 ```powershell
 cd roma4d
-.\r4d.ps1 run demos\spacetime_collider.r4s
-.\r4d.ps1 run -bench demos\spacetime_collider.r4s
+.\r4d.ps1 demos\spacetime_collider.r4d
+.\r4d.ps1 run -bench demos\spacetime_collider.r4d
 ```
 
 ---
 
 ## Spec reference: sample `r4d run -bench` (Collider demo)
 
-Example capture from **`demos/spacetime_collider.r4s`** on a Windows + Clang + MinGW-w64 host (milliseconds vary by machine; sub-ms frontend phases often print as **`0.000`**).
+Example capture from **`demos/spacetime_collider.r4d`** on Windows with **Zig** or **Clang+MinGW** (milliseconds vary; sub-ms frontend phases often print as **`0.000`**).
 
 **Pipeline phases (`-bench`):**
 
 ```
-r4 run -bench <path>/demos/spacetime_collider.r4s
+r4 run -bench <path>/demos/spacetime_collider.r4d
   load_manifest:                  0.000 ms
   read_source:                    0.000 ms
   parse:                          0.531 ms
@@ -250,8 +250,8 @@ r4 run -bench <path>/demos/spacetime_collider.r4s
   lower_mir_to_llvm:              0.000 ms
   llvm_module_string:             0.000 ms
   write_ll_file:                  0.000 ms
-  clang_compile_ll:              58.285 ms
-  clang_link_exe:               202.709 ms
+  zig_compile_ll / clang_compile_ll:  …
+  zig_link_exe / clang_link_exe:      …
   native_run:                   192.540 ms
   total (sum of phases):        454.066 ms
 r4d run: passed.
@@ -276,7 +276,7 @@ r4d run: passed.
   * Beacon SoA column       : synchronized
   ------------------------------------------------
   >> Collider nominal. Spacetime shards committed to MIR.
-  >> For wall-clock and native_run ms: r4 run -bench demos/spacetime_collider.r4s
+  >> For wall-clock and native_run ms: r4 run -bench demos/spacetime_collider.r4d
 
 r4d run: passed (with 1 warning).
 ```
@@ -289,7 +289,7 @@ r4d run: passed (with 1 warning).
 |-------|----------------|
 | **vs CPython** | Hot numeric kernels compiled to **native code** through **LLVM** typically outperform **interpreted** Python loops by a large margin for the same *algorithmic* work—subject to allocator behavior and how much lives in Roma4D vs the host runtime. |
 | **vs Rust** | Rust remains the benchmark for **hand-tuned** systems code. Roma4D aims for **safe, explicit layout** and **geometric** productivity first; compare with **`bench_4d.rs`** on your CPU for a concrete scalar loop baseline. |
-| **Compile time** | Dominated by **clang** (`clang_compile_ll`, `clang_link_exe` in **`-bench`**). Frontend passes are usually sub-millisecond on small examples. |
+| **Compile time** | Dominated by **`zig cc`** or **clang** in **`-bench`**. Frontend passes are usually sub-millisecond on small examples. |
 
 Use **`r4d run -bench`** or **`r4d build -bench`** to see **where time goes** in your environment.
 

@@ -1,7 +1,7 @@
-# cosmic_genesis.r4s — valid Roma4D (Cl(4,0) worldtube + par evolution)
+# cosmic_genesis.r4d — valid Roma4D (Cl(4,0) worldtube + par evolution)
 # Run from anywhere after:  .\scripts\Install-R4dUserEnvironment.ps1  (sets PATH + R4D_PKG_ROOT)
-#   r4 run C:\full\path\to\cosmic_genesis.r4s
-# Or from repo: r4 run demos\cosmic_genesis.r4s
+#   r4d C:\full\path\to\cosmic_genesis.r4d
+# Or from repo: r4d demos\cosmic_genesis.r4d
 
 def main() -> None:
     N: int = 1_000_000

@@ -32,6 +32,9 @@ type llvmGen struct {
 
 	// Per-function uniquifier for named LLVM locals (allocas, geom temps, etc.).
 	localCounter int
+
+	// loweringFn is the MIR function currently being lowered (for MIRReturn typing).
+	loweringFn *MIRFunction
 }
 
 type mirFeatureFlags struct {
@@ -58,7 +61,7 @@ func LowerMIRToLLVM(m *MIRModule) (*ir.Module, []string, error) {
 		decls:    make(map[string]*ir.Func),
 	}
 	g.mod.SourceFilename = m.SourcePath
-	g.mod.TargetTriple = "" // host default when compiling with clang
+	g.mod.TargetTriple = "" // host default when compiling .ll (zig cc or clang)
 
 	g.registerClassLayouts()
 	g.scanFeatures()
@@ -215,6 +218,9 @@ func (g *llvmGen) freshName(base string) string {
 }
 
 func (g *llvmGen) lowerFunc(mf *MIRFunction) error {
+	g.loweringFn = mf
+	defer func() { g.loweringFn = nil }()
+
 	retTy, err := g.inferFuncReturnLLVM(mf)
 	if err != nil {
 		return err
@@ -229,9 +235,13 @@ func (g *llvmGen) lowerFunc(mf *MIRFunction) error {
 
 	name := mf.Name
 	if name == "main" {
-		// C runtime entry: i32 @main(...)
-		if retTy != types.I32 && retTy != types.Void {
-			g.warnf("function %q: forcing i32 return for @main (was %s)", name, retTy)
+		// C ABI: always i32 @main. Roma4D `-> None` / `return None` lowers to ret i32 0.
+		// Avoids invalid IR (e.g. define void @main + synthesized ret i64) when inference
+		// and falloff paths disagree.
+		if retTy != types.I32 {
+			if retTy != types.Void {
+				g.warnf("function %q: forcing i32 return for @main (was %s)", name, retTy)
+			}
 			retTy = types.I32
 			g.retLLVM = types.I32
 		}
@@ -483,16 +493,31 @@ func (g *llvmGen) lowerInst(in *MIRInst) error {
 			g.vals[in.Dst] = gep
 		}
 	case MIRReturn:
+		// @main is always i32 (see lowerFunc).
+		if g.retLLVM == types.I32 {
+			if len(in.Uses) == 0 {
+				b.NewRet(constant.NewInt(types.I32, 0))
+				return nil
+			}
+			if g.loweringFn != nil {
+				ty := g.findTypeOfSSA(g.loweringFn, in.Uses[0])
+				if ty.Name == "none" {
+					b.NewRet(constant.NewInt(types.I32, 0))
+					return nil
+				}
+			}
+			v := g.resolve(in.Uses[0])
+			if v.Type().Equal(types.I64) {
+				v = b.NewTrunc(v, types.I32)
+			}
+			b.NewRet(v)
+			return nil
+		}
 		if len(in.Uses) == 0 || g.retLLVM.Equal(types.Void) {
-			// `return None` lowers to a dummy SSA id typed `none` -> LLVM void; void functions
-			// must not `ret i64` or clang rejects the module.
 			b.NewRet(nil)
 			return nil
 		}
 		v := g.resolve(in.Uses[0])
-		if g.retLLVM == types.I32 && v.Type().Equal(types.I64) {
-			v = b.NewTrunc(v, types.I32)
-		}
 		b.NewRet(v)
 	case MIRSoaLoad:
 		return g.lowerSoaLoad(in)

@@ -6,18 +6,18 @@ import (
 	"testing"
 )
 
-func TestResolveRoma4DModuleFile_r4sPreferred(t *testing.T) {
+func TestResolveRoma4DModuleFile_r4dPreferred(t *testing.T) {
 	dir := t.TempDir()
 	if err := os.WriteFile(filepath.Join(dir, "roma4d.toml"), []byte("name = \"t\"\nversion=\"0\"\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	libR4s := filepath.Join(dir, "libgeo.r4s")
-	if err := os.WriteFile(libR4s, []byte("def f() -> int:\n    return 0\n"), 0o644); err != nil {
+	libR4d := filepath.Join(dir, "libgeo.r4d")
+	if err := os.WriteFile(libR4d, []byte("def f() -> int:\n    return 0\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
 	got := ResolveRoma4DModuleFile(dir, "libgeo")
-	if got != libR4s {
-		t.Fatalf("want %s got %s", libR4s, got)
+	if got != libR4d {
+		t.Fatalf("want %s got %s", libR4d, got)
 	}
 }
 
@@ -37,7 +37,7 @@ func TestResolveRoma4DModuleFile_legacyRoma4d(t *testing.T) {
 }
 
 func TestIsRoma4DSourcePath(t *testing.T) {
-	if !IsRoma4DSourcePath("x.r4s") || !IsRoma4DSourcePath("x.roma4d") {
+	if !IsRoma4DSourcePath("x.r4d") || !IsRoma4DSourcePath("x.r4s") || !IsRoma4DSourcePath("x.roma4d") {
 		t.Fatal()
 	}
 	if IsRoma4DSourcePath("x.py") {

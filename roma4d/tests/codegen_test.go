@@ -12,7 +12,7 @@ import (
 
 func TestMIRToLLVMIRHelloMarkers(t *testing.T) {
 	root := roma4dRoot(t)
-	ex := filepath.Join(root, "examples", "hello_4d.r4s")
+	ex := filepath.Join(root, "examples", "hello_4d.r4d")
 	res, err := compiler.CheckFile(root, ex, nil)
 	if err != nil {
 		t.Fatal(err)
@@ -69,12 +69,61 @@ func min(a, b int) int {
 	return b
 }
 
-func TestBuildExecutableMinMain(t *testing.T) {
+func TestCosmicGenesisLLVMMainSignature(t *testing.T) {
+	root := roma4dRoot(t)
+	p := filepath.Join(root, "demos", "cosmic_genesis.r4d")
+	res, err := compiler.CheckFile(root, p, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(res.Errors) > 0 {
+		t.Fatal(res.Errors)
+	}
+	mir, errs := compiler.LowerToMIR(res)
+	if len(errs) > 0 {
+		t.Fatal(errs)
+	}
+	ll, _, err := compiler.MIRToLLVMIR(mir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(ll, "define void @main") && strings.Contains(ll, "ret i64") {
+		t.Fatalf("invalid LLVM: void @main mixed with i64 ret\n%s", ll[:min(2500, len(ll))])
+	}
+}
+
+func skipIfNoNativeLinker(t *testing.T) {
+	t.Helper()
+	if runtime.GOOS == "windows" {
+		if compiler.FindZig() != "" || compiler.FindClang() != "" {
+			return
+		}
+		t.Skip("need zig or clang on PATH (Windows)")
+		return
+	}
 	if compiler.FindClang() == "" {
 		t.Skip("clang not on PATH")
 	}
+}
+
+func TestBuildExecutableCosmicGenesis(t *testing.T) {
+	skipIfNoNativeLinker(t)
 	root := roma4dRoot(t)
-	src := filepath.Join(root, "examples", "min_main.r4s")
+	src := filepath.Join(root, "demos", "cosmic_genesis.r4d")
+	out := filepath.Join(t.TempDir(), "cosmic")
+	if runtime.GOOS == "windows" {
+		out += ".exe"
+	}
+	_, err := compiler.BuildExecutable(root, src, out, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestBuildExecutableMinMain(t *testing.T) {
+	skipIfNoNativeLinker(t)
+	root := roma4dRoot(t)
+	src := filepath.Join(root, "examples", "min_main.r4d")
 	out := filepath.Join(t.TempDir(), "min_main_out")
 	if runtime.GOOS == "windows" {
 		out += ".exe"

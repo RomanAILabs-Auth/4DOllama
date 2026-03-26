@@ -9,19 +9,25 @@ import (
 	"strings"
 	"time"
 
+	"github.com/RomanAILabs-Auth/Roma4D/src/ai"
 	"github.com/RomanAILabs-Auth/Roma4D/src/compiler"
 )
 
 // Version matches roma4d.toml; bump together when releasing.
 const Version = "0.1.0"
 
-// Main is the shared entry for both `r4d` and `roma4d` binaries.
+// Main is the shared entry for `r4`, `r4d`, and `roma4d` binaries.
 func Main(argv []string) int {
 	if len(argv) < 2 {
 		usage()
 		return 1
 	}
-	switch argv[1] {
+	strict, rest := stripStrictFlags(argv[1:])
+	if len(rest) == 0 {
+		usage()
+		return 1
+	}
+	switch rest[0] {
 	case "-h", "--help", "help":
 		usage()
 		return 0
@@ -29,41 +35,64 @@ func Main(argv []string) int {
 		fmt.Printf("roma4d (r4d) %s %s/%s\n", Version, runtime.GOOS, runtime.GOARCH)
 		return 0
 	case "build":
-		return cmdBuild(argv[0], argv[2:])
+		return cmdBuild(argv[0], rest[1:], strict)
 	case "run":
-		return cmdRun(argv[0], argv[2:])
+		return cmdRun(argv[0], rest[1:], strict)
 	default:
-		fmt.Fprintf(os.Stderr, "r4d: unknown command %q\n\n", argv[1])
+		if compiler.IsRoma4DSourcePath(rest[0]) {
+			// Forgiving shorthand: r4d file.r4d  (same as run, expert hints on failure)
+			return cmdRun(argv[0], rest, strict)
+		}
+		fmt.Fprintf(os.Stderr, "r4d: unknown command %q\n\n", rest[0])
 		usage()
 		return 1
 	}
+}
+
+// stripStrictFlags removes every --strict from args (any position).
+func stripStrictFlags(args []string) (strict bool, out []string) {
+	for _, a := range args {
+		if a == "--strict" {
+			strict = true
+			continue
+		}
+		out = append(out, a)
+	}
+	return strict, out
 }
 
 func usage() {
 	fmt.Fprintf(os.Stderr, `roma4d — the first 4D spacetime programming language
 
 Usage:
-  r4 | r4d | roma4d   [command]
+  r4d [--strict] <file.r4d> [args...]     Shorthand for run (forgiving Expert mode by default)
+  r4d [--strict] run <file.r4d> [args...]
+  r4d [--strict] build <file.r4d> [-o path] [-bench]
+
+Flags:
+  --strict    Disable native Expert hints; print raw compiler errors only (CI / scripting).
 
 Commands:
-  build <file.r4s> [-o path] [-bench]   Compile (needs clang on PATH); -bench prints pipeline timings
-  run   <file.r4s> [-bench] [args...]   Build temp binary, run; -bench adds native_run ms
-  version                         Print toolchain version
-  help, --help                    Show this message
+  build   Native compile: Windows uses Zig (zig cc) when on PATH, else LLVM clang + MinGW; Unix uses clang. -bench prints timings
+  run     Build temp binary, run; -bench adds native_run ms
+  version Print toolchain version
+  help    Show this message
 
-Source files use extension .r4s (preferred). .roma4d is still accepted.
+Source extension: .r4d (official). Legacy: .r4s, .roma4d.
+
+Forgiving mode (default): on compile failure, a native rules engine may append Roma4D-specific hints
+(no external LLM, zero network). Use --strict to disable.
 
 Examples:
-  r4 run examples/hello_4d.r4s
-  r4d run -bench examples/min_main.r4s
-  r4 build demos/cosmic_genesis.r4s -o ./cosmic
+  r4d demos/hello.r4d
+  r4d --strict run examples/min_main.r4d
+  r4d run -bench examples/hello_4d.r4d
 
 PowerShell: type only the command line, not the leading "PS C:\...>" prompt
 (PS is an alias for Get-Process and will break pasted lines).
 
 The source file's directory tree must contain roma4d.toml (walk upward from the file),
 unless you set R4D_PKG_ROOT or ROMA4D_HOME to your Roma4D root (folder with roma4d.toml).
-Then you can run: r4 run C:\anywhere\sketch.r4s
 
 Windows one-shot setup (User PATH + R4D_PKG_ROOT):  .\scripts\Install-R4dUserEnvironment.ps1
 `)
@@ -106,15 +135,15 @@ func ensureSourceFile(abs string) error {
 	fi, err := os.Stat(abs)
 	if err != nil {
 		if os.IsNotExist(err) {
-			return fmt.Errorf("source file not found: %s\nhint: cd to your Roma4D repo (where roma4d.toml lives) or pass a full path to a .r4s file", abs)
+			return fmt.Errorf("source file not found: %s\nhint: cd to your Roma4D repo (where roma4d.toml lives) or pass a full path to a .r4d file", abs)
 		}
 		return err
 	}
 	if fi.IsDir() {
-		return fmt.Errorf("expected a .r4s source file, not a directory: %s", abs)
+		return fmt.Errorf("expected a .r4d source file, not a directory: %s", abs)
 	}
 	if !compiler.IsRoma4DSourcePath(abs) {
-		return fmt.Errorf("not a Roma4D source file (use .r4s or .roma4d): %s", abs)
+		return fmt.Errorf("not a Roma4D source file (use .r4d, or legacy .r4s / .roma4d): %s", abs)
 	}
 	return nil
 }
@@ -153,15 +182,33 @@ func findPkgRoot(from string) (string, error) {
 			return root, nil
 		}
 	}
-	return "", fmt.Errorf("roma4d.toml not found above %s\nhint: place your .r4s file under your Roma4D clone, or set R4D_PKG_ROOT (or ROMA4D_HOME) to the folder that contains roma4d.toml\nWindows: .\\scripts\\Install-R4dUserEnvironment.ps1 adds Go bin to PATH and sets R4D_PKG_ROOT", from)
+	return "", fmt.Errorf("roma4d.toml not found above %s\nhint: place your .r4d file under your Roma4D clone, or set R4D_PKG_ROOT (or ROMA4D_HOME) to the folder that contains roma4d.toml\nWindows: .\\scripts\\Install-R4dUserEnvironment.ps1 adds Go bin to PATH and sets R4D_PKG_ROOT", from)
 }
 
-func cmdBuild(argv0 string, args []string) int {
+func reportBuildFailure(tool, verb, srcAbs string, err error, strict bool) int {
+	raw := err.Error()
+	if !strict {
+		line := ai.ExtractErrorLine(raw)
+		fixed, msg := ai.RunExpertMode(srcAbs, raw, line, true)
+		if fixed {
+			fmt.Fprintf(os.Stderr, "%s %s:\n%s", tool, verb, msg)
+			return 1
+		}
+	}
+	fmt.Fprintf(os.Stderr, "%s %s: %v\n", tool, verb, err)
+	return 1
+}
+
+func cmdBuild(argv0 string, args []string, strict bool) int {
 	tool := toolLabel(argv0)
 	outPath := ""
 	bench := false
 	var pos []string
 	for i := 0; i < len(args); i++ {
+		if args[i] == "--strict" {
+			strict = true
+			continue
+		}
 		if args[i] == "-o" && i+1 < len(args) {
 			outPath = args[i+1]
 			i++
@@ -188,13 +235,11 @@ func cmdBuild(argv0 string, args []string) int {
 		return 1
 	}
 	if err := ensureSourceFile(srcAbs); err != nil {
-		fmt.Fprintf(os.Stderr, "%s build: %v\n", tool, err)
-		return 1
+		return reportBuildFailure(tool, "build", srcAbs, err, strict)
 	}
 	pkgRoot, err := findPkgRoot(srcAbs)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "%s build: %v\n", tool, err)
-		return 1
+		return reportBuildFailure(tool, "build", srcAbs, err, strict)
 	}
 	if outPath == "" {
 		base := compiler.StripRoma4DSourceExt(filepath.Base(srcAbs))
@@ -216,8 +261,7 @@ func cmdBuild(argv0 string, args []string) int {
 	warns, err := compiler.BuildExecutable(pkgRoot, srcAbs, outPath, b)
 	printCompilerWarnings(warns)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "%s build: %v\n", tool, err)
-		return 1
+		return reportBuildFailure(tool, "build", srcAbs, err, strict)
 	}
 	if b != nil {
 		b.WriteReport(os.Stderr, srcAbs)
@@ -227,11 +271,15 @@ func cmdBuild(argv0 string, args []string) int {
 	return 0
 }
 
-func cmdRun(argv0 string, args []string) int {
+func cmdRun(argv0 string, args []string, strict bool) int {
 	tool := toolLabel(argv0)
 	bench := false
 	var filtered []string
 	for _, a := range args {
+		if a == "--strict" {
+			strict = true
+			continue
+		}
 		if a == "-bench" {
 			bench = true
 			continue
@@ -240,7 +288,7 @@ func cmdRun(argv0 string, args []string) int {
 	}
 	args = filtered
 	if len(args) < 1 {
-		fmt.Fprintf(os.Stderr, "%s run: need a .r4s (or .roma4d) source file\n", tool)
+		fmt.Fprintf(os.Stderr, "%s run: need a .r4d source file (or legacy .r4s / .roma4d)\n", tool)
 		return 1
 	}
 	src := args[0]
@@ -251,13 +299,11 @@ func cmdRun(argv0 string, args []string) int {
 		return 1
 	}
 	if err := ensureSourceFile(srcAbs); err != nil {
-		fmt.Fprintf(os.Stderr, "%s run: %v\n", tool, err)
-		return 1
+		return reportBuildFailure(tool, "run", srcAbs, err, strict)
 	}
 	pkgRoot, err := findPkgRoot(srcAbs)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "%s run: %v\n", tool, err)
-		return 1
+		return reportBuildFailure(tool, "run", srcAbs, err, strict)
 	}
 	tmp, err := os.MkdirTemp("", "r4d-run-*")
 	if err != nil {
@@ -276,8 +322,7 @@ func cmdRun(argv0 string, args []string) int {
 	warns, err := compiler.BuildExecutable(pkgRoot, srcAbs, exe, b)
 	printCompilerWarnings(warns)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "%s run: %v\n", tool, err)
-		return 1
+		return reportBuildFailure(tool, "run", srcAbs, err, strict)
 	}
 	c := exec.Command(exe, progArgs...)
 	c.Stdin = os.Stdin

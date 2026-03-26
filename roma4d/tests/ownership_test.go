@@ -45,7 +45,7 @@ def f():
     y = v
     return x
 `
-	res := checkSrc(t, dir, "m.r4s", src)
+	res := checkSrc(t, dir, "m.r4d", src)
 	var found bool
 	for _, e := range res.Errors {
 		if strings.Contains(e, "UseAfterMoveError") && strings.Contains(e, "v") {
@@ -71,7 +71,7 @@ def ok():
     b = c.pos
     return a
 `
-	res := checkSrc(t, dir, "m.r4s", src)
+	res := checkSrc(t, dir, "m.r4d", src)
 	if len(res.Errors) > 0 {
 		t.Fatalf("expected no errors, got: %v", res.Errors)
 	}
@@ -89,7 +89,7 @@ def bad():
     b = c.pos
     return (a, b)
 `
-	res := checkSrc(t, dir, "m.r4s", src)
+	res := checkSrc(t, dir, "m.r4d", src)
 	var found bool
 	for _, e := range res.Errors {
 		if strings.Contains(e, "UseAfterMoveError") && strings.Contains(e, "pos") {
@@ -111,7 +111,7 @@ def f():
     mutborrow(v)
     return v
 `
-	res := checkSrc(t, dir, "m.r4s", src)
+	res := checkSrc(t, dir, "m.r4d", src)
 	var found bool
 	for _, e := range res.Errors {
 		if strings.Contains(e, "double mutable borrow") {
@@ -133,7 +133,7 @@ def f():
     mutborrow(v)
     return v
 `
-	res := checkSrc(t, dir, "m.r4s", src)
+	res := checkSrc(t, dir, "m.r4d", src)
 	var found bool
 	for _, e := range res.Errors {
 		if strings.Contains(e, "reborrow conflict") || strings.Contains(e, "immutable borrows") {
@@ -158,7 +158,7 @@ def f():
         _ = p
     return 0
 `
-	res := checkSrc(t, dir, "m.r4s", src)
+	res := checkSrc(t, dir, "m.r4d", src)
 	var found bool
 	for _, e := range res.Errors {
 		if strings.Contains(e, "ParallelismError") && strings.Contains(e, "Sendable") {
@@ -180,7 +180,7 @@ def f():
         _ = borrow(v)
     return v
 `
-	res := checkSrc(t, dir, "m.r4s", src)
+	res := checkSrc(t, dir, "m.r4d", src)
 	if len(res.Errors) > 0 {
 		t.Fatalf("borrow(v) should not count as par capture of v, got: %v", res.Errors)
 	}
@@ -196,7 +196,7 @@ def f():
         _ = p * r
     return 0
 `
-	res := checkSrc(t, dir, "m.r4s", src)
+	res := checkSrc(t, dir, "m.r4d", src)
 	if len(res.Errors) > 0 {
 		t.Fatalf("expected rotor capture ok, got: %v", res.Errors)
 	}
@@ -215,7 +215,7 @@ def f():
     c.pos = v
     return c
 `
-	res := checkSrc(t, dir, "m.r4s", src)
+	res := checkSrc(t, dir, "m.r4d", src)
 	var found bool
 	for _, e := range res.Errors {
 		if strings.Contains(e, "TaintError") {
@@ -238,7 +238,7 @@ def f():
         _ = r
     return 0
 `
-	res := checkSrc(t, dir, "m.r4s", src)
+	res := checkSrc(t, dir, "m.r4d", src)
 	var found bool
 	for _, e := range res.Errors {
 		if strings.Contains(e, "ParallelismError") && strings.Contains(e, "Python interop") {

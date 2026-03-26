@@ -6,14 +6,17 @@ import (
 	"strings"
 )
 
-// Roma4DSourceExtR4S is the preferred source suffix (short, "Roma4D source").
+// Roma4DSourceExtR4D is the official Roma4D source suffix.
+const Roma4DSourceExtR4D = ".r4d"
+
+// Roma4DSourceExtR4S is a short legacy suffix; still accepted.
 const Roma4DSourceExtR4S = ".r4s"
 
-// Roma4DSourceExtLegacy is the original extension; still accepted everywhere.
+// Roma4DSourceExtLegacy is the original long extension; still accepted.
 const Roma4DSourceExtLegacy = ".roma4d"
 
 // Roma4DSourceExtensions lists accepted suffixes, preferred first.
-var Roma4DSourceExtensions = []string{Roma4DSourceExtR4S, Roma4DSourceExtLegacy}
+var Roma4DSourceExtensions = []string{Roma4DSourceExtR4D, Roma4DSourceExtR4S, Roma4DSourceExtLegacy}
 
 // IsRoma4DSourcePath returns true if path ends with a known Roma4D source extension.
 func IsRoma4DSourcePath(path string) bool {
@@ -26,7 +29,7 @@ func IsRoma4DSourcePath(path string) bool {
 	return false
 }
 
-// StripRoma4DSourceExt removes .r4s or .roma4d from a filename (for module naming).
+// StripRoma4DSourceExt removes .r4d, .r4s, or .roma4d from a filename (for module naming).
 func StripRoma4DSourceExt(name string) string {
 	lower := strings.ToLower(name)
 	for _, e := range Roma4DSourceExtensions {
@@ -39,7 +42,7 @@ func StripRoma4DSourceExt(name string) string {
 }
 
 // ResolveRoma4DModuleFile returns the path to an existing module file under root for a dotted
-// import path, or "" if none found. Tries .r4s before .roma4d.
+// import path, or "" if none found. Tries .r4d, then .r4s, then .roma4d.
 func ResolveRoma4DModuleFile(rootDir, dotPath string) string {
 	slashPath := strings.ReplaceAll(dotPath, ".", string(filepath.Separator))
 	bases := []string{
