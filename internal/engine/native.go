@@ -4,8 +4,8 @@ package engine
 
 /*
 #cgo CFLAGS: -I${SRCDIR}/../../4d-engine/include
-#cgo windows LDFLAGS: ${SRCDIR}/../../4d-engine/target/release/four_d_engine.lib
-#cgo !windows LDFLAGS: -L${SRCDIR}/../../4d-engine/target/release -lfour_d_engine -lm
+#cgo LDFLAGS: -L${SRCDIR}/../../4d-engine/target/release -lfour_d_engine
+#cgo !windows LDFLAGS: -lm
 #include "four_d_engine.h"
 #include <stdlib.h>
 */
