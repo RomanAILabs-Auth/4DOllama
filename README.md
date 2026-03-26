@@ -1,5 +1,15 @@
 # 4DOllama (`4dollama`)
 
+## Ollama-identical interactive chat (Phase 11)
+
+`4dollama run <model>` matches **`ollama run`**-style usage: **streaming** assistant text, **`/help`**, **`/clear`**, **`/bye`** (also **`/exit`** / **`/quit`**), **Ctrl+Enter** for a newline in the full-screen TUI, **PgUp** / **PgDown** to scroll history, and the status line: *Message... Enter = send (Ollama-style) · Ctrl+Enter = newline · /help /clear /bye*. Consecutive duplicate user messages are dropped server-side.
+
+**Logging:** Quaternion RoPE, spacetime attention, 4D GEMM, and related engine traces are **`debug`** logs only. Use **`4dollama serve -verbose`**, **`FOURD_LOG_LEVEL=debug`**, or **`LOG_LEVEL=debug`** to print them. When **`run`** auto-starts **`serve`** for interactive chat (terminal UI), the child uses **`FOURD_LOG_LEVEL=error`** so stderr stays quiet.
+
+**System context:** Every **`/api/chat`** request gets a permanent **system** preamble (merged with any client `system` message) describing quaternion RoPE, spacetime attention, 4D GEMM, and GGUF lift so the model can answer product questions accurately.
+
+---
+
 **One-click install** (from repo root) builds the Rust `four_d_engine`, compiles the Go CLI (CGO when possible, stub fallback), sets **`FOURD_GPU=cpu`** when no GPU path is detected, pulls **qwen2.5** (best effort), starts **`4dollama serve`** in the background, and prints:
 
 > 🎉 4DOllama is ready! Works on CPU or GPU. Just type: `4dollama run qwen2.5`
@@ -40,6 +50,10 @@ internal/
 4d-engine/             # Rust: tensor4d, ops, converter, ffi, gpu
 ```
 
+### Roma4D (`roma4d/`)
+
+**[Roma4D](https://github.com/RomanAILabs-Auth/Roma4D)** (4D spacetime language, `r4d` / `roma4d` CLI) is developed alongside this repo. Sources under **`roma4d/`** are a separate Go module; releases and primary git history live at **https://github.com/RomanAILabs-Auth/Roma4D**. After pulling compiler changes, run **`go install ./cmd/r4d ./cmd/roma4d`** from `roma4d/` (see that folder’s README for Windows / MinGW notes).
+
 ## API (subset)
 
 | Method | Path | Notes |
@@ -78,7 +92,8 @@ curl -s http://127.0.0.1:13373/v1/chat/completions \
 | `FOURD_HOST` | `0.0.0.0` | Bind address |
 | `FOURD_PORT` | `13373` | Port (**not** 11434 — runs beside Ollama) |
 | `FOURD_MODELS` | `~/.4dollama/models` | GGUF search path |
-| `FOURD_LOG_LEVEL` | `info` | `debug` / `info` / `warn` / `error` |
+| `FOURD_LOG_LEVEL` | `info` | `debug` / `info` / `warn` / `error` (if unset, **`LOG_LEVEL`** is used) |
+| `LOG_LEVEL` | _(see above)_ | Optional alias when `FOURD_LOG_LEVEL` is empty |
 | `FOURD_LOG_JSON` | `false` | JSON logs to stderr |
 | `OLLAMA_HOST` | _(empty)_ | Baseline URL for `benchmark-4d` (Windows `install.ps1` sets `http://127.0.0.1:11434`) |
 | `FOURD_BENCH_MODEL` | _(auto)_ | Model name for benchmarks |
