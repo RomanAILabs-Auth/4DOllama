@@ -4,8 +4,10 @@
   Install r4d on your Windows user PATH and set R4D_PKG_ROOT so you can run r4d from any directory.
 
 .DESCRIPTION
-  - go install ./cmd/r4 ./cmd/r4d ./cmd/roma4d into %GOPATH%\bin
-  - Append that bin directory to your *user* PATH if missing
+  - go install ./cmd/r4 ./cmd/r4d ./cmd/roma4d
+  - Adds the *actual* install directory to your *user* PATH:
+      * If go env GOBIN is set (common with conda / venv e.g. quantum_win\Scripts), that folder is used.
+      * Otherwise %GOPATH%\bin is used.
   - Set user environment variable R4D_PKG_ROOT to this repo root (folder containing roma4d.toml)
   - Optionally set R4D_GNU_ROOT when MSYS2 MinGW is present (Clang fallback only)
 
@@ -28,15 +30,29 @@ if (-not (Test-Path $toml)) {
 
 Set-Location $romaRoot
 Write-Host "Building r4 / r4d / roma4d from $romaRoot" -ForegroundColor Cyan
-go install ./cmd/r4 ./cmd/r4d ./cmd/roma4d
+# Embed repo path in the binaries so `r4d C:\anywhere\file.r4d` works without cd into this clone.
+$embedPath = ($romaRoot -replace '\\', '/')
+$embedX = "github.com/RomanAILabs-Auth/Roma4D/internal/cli.EmbeddedPkgRoot=$embedPath"
+go install -ldflags "-X $embedX" ./cmd/r4 ./cmd/r4d ./cmd/roma4d
 
 $gopath = (go env GOPATH).Trim()
 if ([string]::IsNullOrWhiteSpace($gopath)) {
     Write-Error "go env GOPATH is empty"
 }
-$goBin = Join-Path $gopath "bin"
-if (-not (Test-Path $goBin)) {
-    New-Item -ItemType Directory -Path $goBin -Force | Out-Null
+$gobinEnv = (go env GOBIN).Trim()
+if ([string]::IsNullOrWhiteSpace($gobinEnv)) {
+    $installBin = Join-Path $gopath "bin"
+} else {
+    $installBin = [System.IO.Path]::GetFullPath($gobinEnv)
+}
+if (-not (Test-Path $installBin)) {
+    New-Item -ItemType Directory -Path $installBin -Force | Out-Null
+}
+$r4dInstalled = Join-Path $installBin "r4d.exe"
+if (Test-Path $r4dInstalled) {
+    Write-Host "Installed r4d.exe -> $r4dInstalled" -ForegroundColor Green
+} else {
+    Write-Warning "r4d.exe not found at $r4dInstalled - run from repo root and check go env GOBIN / GOPATH."
 }
 
 function Normalize-Dir {
@@ -54,22 +70,29 @@ function Normalize-Dir {
 $userPath = [Environment]::GetEnvironmentVariable("Path", "User")
 if ($null -eq $userPath) { $userPath = "" }
 
-$goBinNorm = Normalize-Dir $goBin
+$installBinNorm = Normalize-Dir $installBin
 $already = $false
 foreach ($segment in ($userPath -split ";")) {
     $sn = Normalize-Dir $segment
-    if ($sn -ne "" -and $sn -ieq $goBinNorm) {
+    if ($sn -ne "" -and $sn -ieq $installBinNorm) {
         $already = $true
         break
     }
 }
 
 if (-not $already) {
-    $newPath = if ($userPath -eq "") { $goBin } else { "$userPath;$goBin" }
+    if ($userPath -eq "") {
+        $newPath = $installBin
+    } else {
+        $newPath = $userPath + ";" + $installBin
+    }
     [Environment]::SetEnvironmentVariable("Path", $newPath, "User")
-    Write-Host "Appended user PATH: $goBin" -ForegroundColor Green
+    Write-Host "Appended user PATH: $installBin" -ForegroundColor Green
+    if (-not [string]::IsNullOrWhiteSpace($gobinEnv)) {
+        Write-Host "(Using go env GOBIN - conda/venv installs go here, not GOPATH\bin.)" -ForegroundColor DarkGray
+    }
 } else {
-    Write-Host "User PATH already contains: $goBin" -ForegroundColor DarkGray
+    Write-Host "User PATH already contains: $installBin" -ForegroundColor DarkGray
 }
 
 [Environment]::SetEnvironmentVariable("R4D_PKG_ROOT", $romaRoot, "User")
@@ -104,3 +127,6 @@ if (-not (Get-Command zig -ErrorAction SilentlyContinue)) {
     Write-Host "      https://ziglang.org/download/" -ForegroundColor DarkYellow
     Write-Host ""
 }
+
+Write-Host "PowerShell tip: WriteAllText with a relative path uses the process cwd - use Join-Path `$PWD or a full path." -ForegroundColor DarkGray
+Write-Host ""

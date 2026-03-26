@@ -16,6 +16,14 @@ import (
 // Version matches roma4d.toml; bump together when releasing.
 const Version = "0.1.0"
 
+// EmbeddedPkgRoot is optionally set at link time, e.g.
+//
+//	go install -ldflags "-X github.com/RomanAILabs-Auth/Roma4D/internal/cli.EmbeddedPkgRoot=C:/path/to/roma4d" ./cmd/r4d
+//
+// When the source file is not under a directory tree that contains roma4d.toml, this value is used so
+// `r4d C:\anywhere\hello.r4d` works from any working directory without setting R4D_PKG_ROOT.
+var EmbeddedPkgRoot string
+
 // Main is the shared entry for `r4`, `r4d`, and `roma4d` binaries.
 func Main(argv []string) int {
 	if len(argv) < 2 {
@@ -91,10 +99,13 @@ Examples:
 PowerShell: type only the command line, not the leading "PS C:\...>" prompt
 (PS is an alias for Get-Process and will break pasted lines).
 
-The source file's directory tree must contain roma4d.toml (walk upward from the file),
-unless you set R4D_PKG_ROOT or ROMA4D_HOME to your Roma4D root (folder with roma4d.toml).
+You can run a program from any folder: pass a path to the .r4d file (absolute is safest for one-off locations).
 
-Windows one-shot setup (User PATH + R4D_PKG_ROOT):  .\scripts\Install-R4dUserEnvironment.ps1
+Package root (stdlib / roma4d.toml): we walk upward from the source file first. If that fails, we use
+R4D_PKG_ROOT or ROMA4D_HOME. Binaries built by .\scripts\Install-R4dUserEnvironment.ps1 (or install.ps1 /
+install.sh) also embed that repo path, so you do not have to cd into the Roma4D clone for normal use.
+
+Windows one-shot setup (PATH + R4D_PKG_ROOT + embedded root):  .\scripts\Install-R4dUserEnvironment.ps1
 `)
 }
 
@@ -135,7 +146,7 @@ func ensureSourceFile(abs string) error {
 	fi, err := os.Stat(abs)
 	if err != nil {
 		if os.IsNotExist(err) {
-			return fmt.Errorf("source file not found: %s\nhint: cd to your Roma4D repo (where roma4d.toml lives) or pass a full path to a .r4d file", abs)
+			return fmt.Errorf("source file not found: %s\nhint: use a full path to the .r4d file, or cd to the folder that contains it (relative paths resolve from your shell cwd, not from the Roma4D repo)", abs)
 		}
 		return err
 	}
@@ -182,7 +193,17 @@ func findPkgRoot(from string) (string, error) {
 			return root, nil
 		}
 	}
-	return "", fmt.Errorf("roma4d.toml not found above %s\nhint: place your .r4d file under your Roma4D clone, or set R4D_PKG_ROOT (or ROMA4D_HOME) to the folder that contains roma4d.toml\nWindows: .\\scripts\\Install-R4dUserEnvironment.ps1 adds Go bin to PATH and sets R4D_PKG_ROOT", from)
+	rawEmb := strings.TrimSpace(EmbeddedPkgRoot)
+	if rawEmb != "" {
+		root, err := filepath.Abs(rawEmb)
+		if err == nil {
+			toml := filepath.Join(root, "roma4d.toml")
+			if st, err := os.Stat(toml); err == nil && !st.IsDir() {
+				return root, nil
+			}
+		}
+	}
+	return "", fmt.Errorf("roma4d.toml not found above %s\nhint: set R4D_PKG_ROOT (or ROMA4D_HOME) to the folder that contains roma4d.toml, or reinstall with .\\scripts\\Install-R4dUserEnvironment.ps1 so the toolchain path is embedded in r4d.exe", from)
 }
 
 func reportBuildFailure(tool, verb, srcAbs string, err error, strict bool) int {
