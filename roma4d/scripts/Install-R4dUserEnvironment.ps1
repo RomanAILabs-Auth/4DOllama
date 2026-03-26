@@ -19,7 +19,7 @@ $ErrorActionPreference = "Stop"
 $romaRoot = (Resolve-Path (Join-Path $PSScriptRoot "..")).Path
 $toml = Join-Path $romaRoot "roma4d.toml"
 if (-not (Test-Path $toml)) {
-    Write-Error "Expected roma4d.toml at $romaRoot — run this script from the Roma4D repo (scripts lives under roma4d\scripts)."
+    Write-Error "Expected roma4d.toml at $romaRoot - run this script from the Roma4D repo (scripts lives under roma4d\scripts)."
 }
 
 Set-Location $romaRoot
@@ -35,19 +35,31 @@ if (-not (Test-Path $goBin)) {
     New-Item -ItemType Directory -Path $goBin -Force | Out-Null
 }
 
-$userPath = [Environment]::GetEnvironmentVariable("Path", "User")
-if ([string]::IsNullOrEmpty($userPath)) {
-    $userPath = ""
+function Normalize-Dir {
+    param([string]$Path)
+    if ([string]::IsNullOrWhiteSpace($Path)) { return "" }
+    $t = $Path.Trim()
+    try {
+        $full = [System.IO.Path]::GetFullPath($t)
+    } catch {
+        $full = $t
+    }
+    return $full.TrimEnd([char[]]@('\', '/'))
 }
-$paths = $userPath -split ";" | ForEach-Object { $_.TrimEnd("\") } | Where-Object { $_ -ne "" }
-$normalizedGoBin = $goBin.TrimEnd("\")
+
+$userPath = [Environment]::GetEnvironmentVariable("Path", "User")
+if ($null -eq $userPath) { $userPath = "" }
+
+$goBinNorm = Normalize-Dir $goBin
 $already = $false
-foreach ($p in $paths) {
-    if ($p.TrimEnd("\") -eq $normalizedGoBin) {
+foreach ($segment in ($userPath -split ";")) {
+    $sn = Normalize-Dir $segment
+    if ($sn -ne "" -and $sn -ieq $goBinNorm) {
         $already = $true
         break
     }
 }
+
 if (-not $already) {
     $newPath = if ($userPath -eq "") { $goBin } else { "$userPath;$goBin" }
     [Environment]::SetEnvironmentVariable("Path", $newPath, "User")
@@ -59,10 +71,12 @@ if (-not $already) {
 [Environment]::SetEnvironmentVariable("R4D_PKG_ROOT", $romaRoot, "User")
 Write-Host "Set user R4D_PKG_ROOT=$romaRoot" -ForegroundColor Green
 
+$demoPath = Join-Path $romaRoot "demos\cosmic_genesis.roma4d"
 Write-Host ""
 Write-Host "Done. Open a NEW terminal, then:" -ForegroundColor Yellow
 Write-Host "  r4d version"
-Write-Host "  r4d run $romaRoot\demos\cosmic_genesis.roma4d"
+Write-Host ('  r4d run ' + $demoPath)
 Write-Host ""
+Write-Host "From repo folder you can also: cd ...\roma4d ; r4d run demos\cosmic_genesis.roma4d"
 Write-Host "You can keep .roma4d files anywhere; imports resolve against R4D_PKG_ROOT."
 Write-Host ""

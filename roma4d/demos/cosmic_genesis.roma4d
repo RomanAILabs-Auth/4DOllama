@@ -36,4 +36,3 @@ def main() -> None:
     print("          End of Cosmic Genesis transmission")
     print("=============================================================")
     print("")
-    return None
