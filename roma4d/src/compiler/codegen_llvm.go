@@ -495,22 +495,37 @@ func (g *llvmGen) lowerInst(in *MIRInst) error {
 		if len(in.Uses) < 2 {
 			return fmt.Errorf("geom_mul: missing operands")
 		}
-		// Pass 9: lower vec4 ⊗ rotor to LLVM <4 x double> (SIMD-friendly fmul); no C runtime call.
+		// vec4/rotor are opaque i8*; list elements may be misaligned for <4 x double> load (Zig UBSAN).
+		// Copy through aligned stack slots, then SIMD fmul (keeps markers + IR shape tests happy).
 		v4 := types.NewVector(4, types.Double)
 		arr4 := types.NewArray(4, types.Double)
-		vp := b.NewBitCast(g.resolve(in.Uses[0]), types.NewPointer(v4))
-		rp := b.NewBitCast(g.resolve(in.Uses[1]), types.NewPointer(v4))
-		vv := b.NewLoad(v4, vp)
-		rr := b.NewLoad(v4, rp)
-		prod := b.NewFMul(vv, rr)
+		mc := g.ensureDecl("memcpy", types.Void,
+			ir.NewParam("dst", types.NewPointer(types.I8)),
+			ir.NewParam("src", types.NewPointer(types.I8)),
+			ir.NewParam("n", types.I64))
+		n32 := constant.NewInt(types.I64, 32)
+		z0 := constant.NewInt(types.I32, 0)
+		va := b.NewAlloca(arr4)
+		va.SetName(g.freshName("geom_v_align"))
+		ra := b.NewAlloca(arr4)
+		ra.SetName(g.freshName("geom_r_align"))
 		outA := b.NewAlloca(arr4)
 		outA.SetName(g.freshName("geom_out"))
+		vSrc := g.pointerCast(b, g.resolve(in.Uses[0]), types.NewPointer(types.I8))
+		rSrc := g.pointerCast(b, g.resolve(in.Uses[1]), types.NewPointer(types.I8))
+		b.NewCall(mc, b.NewBitCast(va, types.NewPointer(types.I8)), vSrc, n32)
+		b.NewCall(mc, b.NewBitCast(ra, types.NewPointer(types.I8)), rSrc, n32)
+		vvPtr := b.NewBitCast(va, types.NewPointer(v4))
+		rrPtr := b.NewBitCast(ra, types.NewPointer(v4))
+		vv := b.NewLoad(v4, vvPtr)
+		rr := b.NewLoad(v4, rrPtr)
+		prod := b.NewFMul(vv, rr)
 		outVP := b.NewBitCast(outA, types.NewPointer(v4))
 		b.NewStore(prod, outVP)
-		z0 := constant.NewInt(types.I32, 0)
 		gep := b.NewGetElementPtr(arr4, outA, z0, z0)
+		vecI8 := g.pointerCast(b, gep, types.NewPointer(types.I8))
 		if in.Dst != 0 {
-			g.vals[in.Dst] = gep
+			g.vals[in.Dst] = vecI8
 		}
 	case MIRReturn:
 		// @main is always i32 (see lowerFunc).
@@ -843,6 +858,22 @@ func (g *llvmGen) lookupSoaField(field string) (class string, idx int, ok bool) 
 func (g *llvmGen) lowerCall(in *MIRInst) error {
 	b := g.block
 	name := strings.Trim(in.Name, `"`)
+	// C ABI: void identity_v4(double *out, const double *v). MIR only has the input vec4 pointer.
+	if name == "identity_v4" && len(in.Uses) == 1 {
+		vPtr := g.pointerCast(b, g.resolve(in.Uses[0]), types.NewPointer(types.Double))
+		arrTy := types.NewArray(4, types.Double)
+		outA := b.NewAlloca(arrTy)
+		outA.SetName(g.freshName("id4_out"))
+		z0 := constant.NewInt(types.I32, 0)
+		outPtr := b.NewGetElementPtr(arrTy, outA, z0, z0)
+		callee := g.declareForCallee("identity_v4", 2)
+		b.NewCall(callee, outPtr, vPtr)
+		vecI8 := g.pointerCast(b, outPtr, types.NewPointer(types.I8))
+		if in.Dst != 0 {
+			g.vals[in.Dst] = vecI8
+		}
+		return nil
+	}
 	callee := g.declareForCallee(name, len(in.Uses))
 	var argVals []value.Value
 	for i, u := range in.Uses {

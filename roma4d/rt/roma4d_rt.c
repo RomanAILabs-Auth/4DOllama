@@ -448,22 +448,18 @@ int print(const char *s) {
     return puts(s);
 }
 
+/* vec4 is lowered as i8* in LLVM; element pointers may be misaligned vs double.
+ * memcpy avoids UB on strict targets (e.g. Zig + UBSAN) when v is not 8-byte aligned. */
 void identity_v4(double *out, const double *v) {
-    int k;
     if (out && v) {
-        for (k = 0; k < 4; k++) {
-            out[k] = v[k];
-        }
+        memcpy(out, v, 4 * sizeof(double));
     }
 }
 
 void roma4d_geometric_mul_vec4_rotor(double *out, const double *v, const double *r) {
-    int k;
     (void)r;
     if (out && v) {
-        for (k = 0; k < 4; k++) {
-            out[k] = v[k];
-        }
+        memcpy(out, v, 4 * sizeof(double));
     }
 }
 
