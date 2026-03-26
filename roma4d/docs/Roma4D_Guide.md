@@ -11,6 +11,8 @@
 
 ## Table of contents
 
+- [Mental Model (Read This First)](#mental-model-read-this-first)
+
 1. [How the compiler runs](#1-how-the-compiler-runs)
 2. [Project layout and `roma4d.toml`](#2-project-layout-and-roma4dtoml)
 3. [CLI commands](#3-cli-commands)
@@ -30,6 +32,21 @@
 17. [Help, debugging, and common failures](#17-help-debugging-and-common-failures)
 18. [LLM checklist (generate valid Roma4D)](#18-llm-checklist-generate-valid-roma4d)
 19. [Example programs in this repo](#19-example-programs-in-this-repo)
+
+## Mental Model (Read This First)
+
+Roma4D is built around three core ideas:
+
+1. **Columns, not objects**  
+   Data lives in Structure-of-Arrays (SoA) by default — not pointer-heavy objects.
+
+2. **Time is explicit**  
+   `t`, `@ t`, and `spacetime:` blocks make *when* something happens a first-class concept.
+
+3. **Execution is parallel by design**  
+   `par for` is the natural way to express large-scale work.
+
+If you think in **columns of data**, **time-indexed values**, and **parallel transformations**, you will write fast, natural, and idiomatic Roma4D code.
 
 ---
 
