@@ -19,7 +19,7 @@
 
 ## Quick start (< 1 minute)
 
-**Prerequisites:** [Go 1.22+](https://go.dev/dl/), **`clang`** on `PATH`, and (on Windows) a **MinGW-w64** toolchain on `PATH` so clang can link with **`-target *-windows-gnu`**—see [Installation](#installation).
+**Prerequisites:** [Go 1.22+](https://go.dev/dl/). **Windows:** [**Zig**](https://ziglang.org/download/) on `PATH` (default: `zig cc`; optional **`R4D_ZIG`** for a full path to `zig.exe`). **Unix/macOS:** **`clang`** on `PATH`. **Windows fallback** if Zig is missing: LLVM **clang** + **MinGW-w64**—see [Installation](#installation).
 
 ```bash
 cd roma4d
@@ -68,7 +68,7 @@ You should see **`r4 run: passed.`** (exit code **42** is intentional for `min_m
 4. If `r4d` is shadowed by another binary, prepend Go’s bin:  
    `$env:Path = "$(go env GOPATH)\bin;$env:Path"`
 
-**Note:** The driver uses **`-target x86_64-pc-windows-gnu`** (or arm/i686 variants) so you are **not** forced to install Visual Studio’s MSVC libs. Preferring MSVC would require changing the driver in `src/compiler/llvm_link.go`.
+**Note:** The driver uses **`-target *-windows-gnu`** (Zig or clang) so you are **not** forced to install Visual Studio’s MSVC libs. Preferring MSVC would require changing the link driver (`src/compiler/llvm_link.go`, Zig argv in `zig_link.go`).
 
 ### macOS
 

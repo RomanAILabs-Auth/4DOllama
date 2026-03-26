@@ -191,9 +191,12 @@ Environment (Expert):
   R4D_EXPERT_INTERACTIVE=0   Print the debug block but skip patch prompt + interactive REPL (e.g. pipes, CI).
   R4D_DEBUG=1                Mirror linker failure details to stderr (see Guide §19).
 
+Environment (Windows native .r4d builds — LLVM IR unchanged, linker driver only):
+  R4D_ZIG                    Full path to zig.exe if not on PATH (default linker: zig cc).
+
 Commands:
-  build   Native compile (.r4d only): Windows prefers Zig (zig cc); else clang + MinGW; Unix uses clang
-  run     Build temp binary and run (.r4d), or delegate to Python (.py)
+  build   Native compile (.r4d): Windows uses Zig (zig cc) by default; clang+MinGW only if Zig missing. Unix/macOS: clang.
+  run     Same as build for .r4d; .py runs under Python
   version Print toolchain version
   help    Show this message
 
@@ -218,6 +221,7 @@ R4D_PKG_ROOT or ROMA4D_HOME. Binaries built by .\scripts\Install-R4dUserEnvironm
 install.sh) also embed that repo path, so you do not have to cd into the Roma4D clone for normal use.
 
 Windows one-shot setup (PATH + R4D_PKG_ROOT + embedded root):  .\scripts\Install-R4dUserEnvironment.ps1
+  Install Zig first for the default linker (no MSYS2 required):  winget install Zig.Zig
 `)
 }
 

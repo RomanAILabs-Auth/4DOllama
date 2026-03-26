@@ -11,7 +11,8 @@
   - Set user environment variable R4D_PKG_ROOT to this repo root (folder containing roma4d.toml)
   - Optionally set R4D_GNU_ROOT when MSYS2 MinGW is present (Clang fallback only)
 
-  Native builds on Windows use Zig (`zig cc`) when `zig` is on PATH — install from https://ziglang.org/download/
+  Default Windows linker: Zig (`zig cc` compiles .ll + links rt/roma4d_rt.c; no separate MinGW install).
+  Install: winget install Zig.Zig  — or https://ziglang.org/download/ — ensure zig.exe is on PATH (or set R4D_ZIG).
   If Zig is missing, Roma4D falls back to LLVM clang + MinGW (R4D_GNU_ROOT / MSYS2).
 
   After running, open a NEW PowerShell (or VS Code terminal) so PATH and env vars reload.

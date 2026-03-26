@@ -34,44 +34,6 @@ func FindClang() string {
 	return ""
 }
 
-// FindZig returns the Zig executable used as `zig cc` driver on Windows, or "".
-// Override with R4D_ZIG (absolute path or a name looked up on PATH).
-func FindZig() string {
-	if p := strings.TrimSpace(os.Getenv("R4D_ZIG")); p != "" {
-		if filepath.IsAbs(p) {
-			if st, err := os.Stat(p); err == nil && !st.IsDir() {
-				return filepath.Clean(p)
-			}
-			return ""
-		}
-		if q, err := exec.LookPath(p); err == nil {
-			return q
-		}
-		if st, err := os.Stat(p); err == nil && !st.IsDir() {
-			return filepath.Clean(p)
-		}
-		return ""
-	}
-	for _, name := range []string{"zig", "zig.exe"} {
-		if q, err := exec.LookPath(name); err == nil {
-			return q
-		}
-	}
-	return ""
-}
-
-// windowsZigTargetTriple is the `-target` passed to `zig cc` for native Windows GNU ABI.
-func windowsZigTargetTriple() string {
-	switch runtime.GOARCH {
-	case "arm64":
-		return "aarch64-windows-gnu"
-	case "386":
-		return "x86-windows-gnu"
-	default:
-		return "x86_64-windows-gnu"
-	}
-}
-
 // windowsClangTarget returns -target for clang on Windows so we link against MinGW (GNU) CRT
 // instead of the MSVC default (lld-link + libcmt.lib), which requires Visual Studio.
 // Install a MinGW-w64 toolchain (e.g. MSYS2) and ensure gcc / mingw bin is on PATH.
@@ -246,9 +208,9 @@ func windowsGNUChain() []string {
 
 // BuildExecutable parses and checks roma4dPath, lowers to MIR → LLVM IR, then links a native exe.
 //
-// Windows (default): uses `zig cc` when `zig` / `zig.exe` is on PATH (bundles MinGW libc; no MSYS2).
-// Windows (fallback): LLVM `clang` + MinGW headers if Zig is not found.
-// Linux/macOS: LLVM `clang` only.
+// Windows: default linker is Zig (`zig cc` compiles .ll and links rt/roma4d_rt.c; bundled libc, no MSYS2).
+//          LLVM IR from codegen_llvm.go is unchanged. If Zig is missing, falls back to clang + MinGW — see windowsGNUChain.
+// Linux/macOS: LLVM `clang` only (`-lm` on link when not Windows).
 //
 // If rt/roma4d_rt.c exists it is linked for runtime symbols. Set R4D_DEBUG=1 to mirror failures to stderr.
 func BuildExecutable(pkgRoot, roma4dPath, outExe string, bench *BuildBench) ([]string, error) {
@@ -265,10 +227,10 @@ func BuildExecutable(pkgRoot, roma4dPath, outExe string, bench *BuildBench) ([]s
 		if clang == "" {
 			if runtime.GOOS == "windows" {
 				WriteBuildFailureLog(pkgRoot, "find_toolchain", [][2]string{
-					{"error", "no zig and no clang on PATH"},
-					{"hint", "install Zig from https://ziglang.org/download/ and add zig to PATH (recommended), or install LLVM clang + MinGW-w64 for fallback"},
+					{"error", "Zig not found on PATH (and no clang for fallback)"},
+					{"hint", "Install Zig (default on Windows): winget install Zig.Zig — or https://ziglang.org/download/ — then add zig.exe to PATH. Optional: set R4D_ZIG to the full path. Fallback: LLVM clang + MinGW-w64 (MSYS2) + R4D_GNU_ROOT."},
 				})
-				return nil, fmt.Errorf("BuildExecutable: on Windows install Zig (`zig` on PATH) or LLVM `clang` + MinGW for native builds")
+				return nil, fmt.Errorf("BuildExecutable: on Windows install Zig on PATH (default; try: winget install Zig.Zig), or set R4D_ZIG, or install LLVM clang + MinGW for fallback")
 			}
 			WriteBuildFailureLog(pkgRoot, "find_clang", [][2]string{
 				{"error", "no clang on PATH"},
@@ -366,8 +328,7 @@ func BuildExecutable(pkgRoot, roma4dPath, outExe string, bench *BuildBench) ([]s
 
 	t = time.Now()
 	if useZig {
-		tgt := windowsZigTargetTriple()
-		compileArgs := []string{"cc", "-target", tgt, "-c", "-O1", "-o", objPath, llPath}
+		compileArgs := ZigCCCompileArgs(llPath, objPath)
 		compile := exec.Command(zig, compileArgs...)
 		compile.Env = os.Environ()
 		if out, e := compile.CombinedOutput(); e != nil {
@@ -386,8 +347,7 @@ func BuildExecutable(pkgRoot, roma4dPath, outExe string, bench *BuildBench) ([]s
 			bench.Add("zig_compile_ll", time.Since(t))
 		}
 
-		linkArgs := []string{"cc", "-target", tgt, "-o", outExe, objPath}
-		linkArgs = append(linkArgs, rtFiles...)
+		linkArgs := ZigCCLinkArgs(outExe, objPath, rtFiles)
 		link := exec.Command(zig, linkArgs...)
 		link.Env = os.Environ()
 		t = time.Now()
@@ -404,7 +364,7 @@ func BuildExecutable(pkgRoot, roma4dPath, outExe string, bench *BuildBench) ([]s
 				{"error", e.Error()},
 			})
 			err := fmt.Errorf("zig cc link failed: %w\n%s", e, string(out))
-			err = fmt.Errorf("%w\nhint (Windows): ensure `zig` is on PATH (https://ziglang.org/download/). Override with R4D_ZIG if needed.\nfull diagnostics: %s", err, filepath.Join(pkgRoot, "debug", "last_build_failure.log"))
+			err = fmt.Errorf("%w\nhint: install Zig (winget install Zig.Zig) or set R4D_ZIG. Fallback: clang + MinGW.\nfull diagnostics: %s", err, filepath.Join(pkgRoot, "debug", "last_build_failure.log"))
 			return all, err
 		}
 		if bench != nil {
@@ -459,7 +419,7 @@ func BuildExecutable(pkgRoot, roma4dPath, outExe string, bench *BuildBench) ([]s
 		})
 		err := fmt.Errorf("clang link failed: %w\n%s", e, string(out))
 		if runtime.GOOS == "windows" && windowsClangTarget() != nil {
-			err = fmt.Errorf("%w\nhint (Windows): install Zig on PATH (recommended), or use Clang with MinGW-w64 (e.g. MSYS2 ucrt64).\nfull diagnostics: %s", err, filepath.Join(pkgRoot, "debug", "last_build_failure.log"))
+			err = fmt.Errorf("%w\nhint (Windows clang fallback): install Zig on PATH first (default linker); or fix MinGW headers (R4D_GNU_ROOT, MSYS2 ucrt64).\nfull diagnostics: %s", err, filepath.Join(pkgRoot, "debug", "last_build_failure.log"))
 		} else {
 			err = fmt.Errorf("%w\nfull diagnostics: %s", err, filepath.Join(pkgRoot, "debug", "last_build_failure.log"))
 		}

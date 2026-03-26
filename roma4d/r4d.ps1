@@ -36,8 +36,15 @@ if ($args.Count -eq 0) {
     exit $LASTEXITCODE
 }
 
-if (-not (Get-Command zig -ErrorAction SilentlyContinue)) {
-    Write-Host "[Tip] Install Zig for the smoothest Windows builds: https://ziglang.org/download/" -ForegroundColor DarkYellow
+$zigCmd = Get-Command zig -ErrorAction SilentlyContinue
+if (-not $zigCmd) {
+    $zigCmd = Get-Command zig.exe -ErrorAction SilentlyContinue
+}
+if (-not $zigCmd) {
+    Write-Host "[Roma4D] Zig not on PATH — native .r4d builds need it by default (zig cc)." -ForegroundColor Yellow
+    Write-Host "         Install:  winget install Zig.Zig" -ForegroundColor Yellow
+    Write-Host "         Or:       https://ziglang.org/download/" -ForegroundColor Yellow
+    Write-Host "         Fallback: LLVM clang + MinGW only if Zig is missing." -ForegroundColor DarkGray
 }
 
 & $exe @args
