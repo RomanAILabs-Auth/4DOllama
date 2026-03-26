@@ -216,11 +216,16 @@ async def _local_stream(model: str, prompt: str, settings: Settings) -> None:
 
 
 def _remote_generate_stream(settings: Settings, model: str, prompt: str) -> None:
+    """Stream from the Go 4dollama API via /api/chat (same path as `4dollama run`); avoids /api/generate quirks."""
     h = settings.host
     if h in ("0.0.0.0", "::"):
         h = "127.0.0.1"
-    url = f"http://{h}:{settings.port}/api/generate"
-    body: dict[str, Any] = {"model": model, "prompt": prompt, "stream": True}
+    url = f"http://{h}:{settings.port}/api/chat"
+    body: dict[str, Any] = {
+        "model": model,
+        "messages": [{"role": "user", "content": prompt}],
+        "stream": True,
+    }
     req = urllib.request.Request(
         url,
         data=json.dumps(body).encode("utf-8"),
@@ -237,7 +242,8 @@ def _remote_generate_stream(settings: Settings, model: str, prompt: str) -> None
                     obj = json.loads(line)
                 except json.JSONDecodeError:
                     continue
-                r = obj.get("response", "")
+                msg = obj.get("message") or {}
+                r = msg.get("content", "") if isinstance(msg, dict) else ""
                 if r:
                     sys.stdout.write(r)
                     sys.stdout.flush()
