@@ -23,33 +23,64 @@ const (
 
 func (Stub) Generate(ctx context.Context, cx Context, model, prompt string) (string, error) {
 	var sb strings.Builder
-	sb.WriteString(fmt.Sprintf("model=%s\n", model))
+	err := (Stub{}).GenerateStream(ctx, cx, model, prompt, func(s string) error {
+		sb.WriteString(s)
+		return nil
+	})
+	return sb.String(), err
+}
+
+// GenerateStream streams native 4D autoregressive tokens as they are sampled (plus the same preamble/footer as Generate).
+func (Stub) GenerateStream(ctx context.Context, cx Context, model, prompt string, emit func(string) error) error {
+	if emit == nil {
+		emit = func(string) error { return nil }
+	}
+	e := func(s string) error {
+		if s == "" {
+			return nil
+		}
+		return emit(s)
+	}
+	if err := e(fmt.Sprintf("model=%s\n", model)); err != nil {
+		return err
+	}
 	if cx.ModelPath != "" {
-		sb.WriteString(fmt.Sprintf("source=%s\n", cx.ModelPath))
+		if err := e(fmt.Sprintf("source=%s\n", cx.ModelPath)); err != nil {
+			return err
+		}
 	}
 	if cx.ParamCount > 0 {
-		sb.WriteString(fmt.Sprintf("gguf_param_count=%d\n", cx.ParamCount))
+		if err := e(fmt.Sprintf("gguf_param_count=%d\n", cx.ParamCount)); err != nil {
+			return err
+		}
 	}
 	if len(cx.LiftedWeights) > 0 {
-		sb.WriteString(fmt.Sprintf("lifted_sample_len=%d\n", len(cx.LiftedWeights)))
+		if err := e(fmt.Sprintf("lifted_sample_len=%d\n", len(cx.LiftedWeights))); err != nil {
+			return err
+		}
 	}
 	if cx.WeightsFrom4DGGUF {
-		sb.WriteString("weights_source=.4dgguf\n")
+		if err := e("weights_source=.4dgguf\n"); err != nil {
+			return err
+		}
 	}
-	sb.WriteString(fmt.Sprintf("4d_preflight_gemm_attn_dot_lifted=%.6f\n\n", cx.MatmulScore))
-	sb.WriteString(prompt)
+	if err := e(fmt.Sprintf("4d_preflight_gemm_attn_dot_lifted=%.6f\n\n", cx.MatmulScore)); err != nil {
+		return err
+	}
+	if err := e(prompt); err != nil {
+		return err
+	}
 	if cx.Eng == nil {
-		sb.WriteString("\n\n[4D autoreg unavailable: no engine]\n")
-		return sb.String(), nil
+		return e("\n\n[4D autoreg unavailable: no engine]\n")
 	}
-	body, nTok, err := autoregressive4D(ctx, cx.Eng, cx.ModelPath, cx.LiftedWeights, prompt)
+	if err := e("\n\n"); err != nil {
+		return err
+	}
+	nTok, err := autoregressive4DStream(ctx, cx.Eng, cx.ModelPath, cx.LiftedWeights, prompt, emit)
 	if err != nil {
-		return "", err
+		return err
 	}
-	sb.WriteString("\n\n")
-	sb.WriteString(body)
-	sb.WriteString(fmt.Sprintf("\n\n(generated_tokens=%d)\n", nTok))
-	return sb.String(), nil
+	return e(fmt.Sprintf("\n\n(generated_tokens=%d)\n", nTok))
 }
 
 func runesToFloatsLimited(chain []rune, max int) []float32 {
@@ -63,13 +94,14 @@ func runesToFloatsLimited(chain []rune, max int) []float32 {
 	return out
 }
 
-func autoregressive4D(ctx context.Context, eng engine.Engine, modelPath string, lifted []float32, prompt string) (string, int, error) {
+// autoregressive4DStream samples tokens and calls emit with each decoded delta (SentencePiece-aware).
+func autoregressive4DStream(ctx context.Context, eng engine.Engine, modelPath string, lifted []float32, prompt string, emit func(string) error) (int, error) {
 	if strings.TrimSpace(modelPath) == "" {
-		return "", 0, fmt.Errorf("stub autoreg needs a resolved GGUF path on disk")
+		return 0, fmt.Errorf("stub autoreg needs a resolved GGUF path on disk")
 	}
 	tokens, err := LoadGGUFTokenStrings(modelPath)
 	if err != nil {
-		return "", 0, fmt.Errorf("gguf tokenizer: %w", err)
+		return 0, fmt.Errorf("gguf tokenizer: %w", err)
 	}
 	vocabSize := len(tokens)
 	text := prompt
@@ -82,7 +114,7 @@ func autoregressive4D(ctx context.Context, eng engine.Engine, modelPath string, 
 	for step := 0; step < AutoregMaxTokens; step++ {
 		select {
 		case <-ctx.Done():
-			return dec.String(), written, ctx.Err()
+			return written, ctx.Err()
 		default:
 		}
 		floats := runesToFloatsLimited([]rune(text), maxCtxRunesAutoreg)
@@ -115,11 +147,17 @@ func autoregressive4D(ctx context.Context, eng engine.Engine, modelPath string, 
 		if strings.Contains(piece, "</s>") || strings.Contains(piece, "im_end") || strings.TrimSpace(piece) == "<|im_end|>" {
 			break
 		}
+		prevLen := dec.Len()
 		AppendSPPiece(&dec, piece)
+		if emit != nil && dec.Len() > prevLen {
+			if err := emit(dec.String()[prevLen:]); err != nil {
+				return written, err
+			}
+		}
 		text = prompt + dec.String()
 		written++
 	}
-	return dec.String(), written, nil
+	return written, nil
 }
 
 // ToResponse wraps text in Ollama JSON shape.

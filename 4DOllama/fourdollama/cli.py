@@ -152,9 +152,7 @@ def _run_slash(line: str) -> str | None:
     if t in ("/bye", "/exit", "/quit"):
         return "exit"
     if t in ("/help", "/?", "?"):
-        print("Available Commands:", file=sys.stderr)
-        print("  /clear          Clear the session context", file=sys.stderr)
-        print("  /bye            Exit", file=sys.stderr)
+        print("commands: /clear  /bye", file=sys.stderr)
         return "continue"
     if t == "/clear":
         return "continue"

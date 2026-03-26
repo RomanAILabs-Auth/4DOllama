@@ -44,17 +44,18 @@ func NewService(eng engine.Engine, reg *models.Registry, log *slog.Logger, inf i
 	return &Service{Eng: eng, Registry: reg, Log: log, Infer: inf}
 }
 
-// Generate produces a completion via the configured inference provider.
-func (s *Service) Generate(ctx context.Context, req ollama.GenerateRequest, fourDMode bool) (ollama.GenerateResponse, error) {
+// buildInferContext resolves the model and gathers tensors / engine state shared by Generate and streaming.
+func (s *Service) buildInferContext(ctx context.Context, req *ollama.GenerateRequest, fourDMode bool) (inference.Context, error) {
+	_ = ctx
 	req.Model = strings.TrimSpace(req.Model)
 	if req.Model == "" {
-		return ollama.GenerateResponse{}, fmt.Errorf("model required")
+		return inference.Context{}, fmt.Errorf("model required")
 	}
 
 	entry, ok := s.Registry.Resolve(req.Model)
 	forward := s.Infer.Name() == "ollama-forward"
 	if !ok && !forward {
-		return ollama.GenerateResponse{}, fmt.Errorf("model not found: %q — run: 4dollama pull %s (GGUF into FOURD_MODELS); decoding uses native four_d_engine. Optional: FOURD_INFERENCE=ollama + OLLAMA_HOST for hybrid", req.Model, req.Model)
+		return inference.Context{}, fmt.Errorf("model not found: %q — run: 4dollama pull %s (GGUF into FOURD_MODELS); decoding uses native four_d_engine. Optional: FOURD_INFERENCE=ollama + OLLAMA_HOST for hybrid", req.Model, req.Model)
 	}
 
 	var inspectJSON, path string
@@ -196,7 +197,7 @@ func (s *Service) Generate(ctx context.Context, req ollama.GenerateRequest, four
 			slog.Int("lift_len", len(lifted)))
 	}
 
-	ic := inference.Context{
+	return inference.Context{
 		ModelResolved:      ok,
 		ModelPath:          path,
 		InspectJSON:        inspectJSON,
@@ -209,19 +210,77 @@ func (s *Service) Generate(ctx context.Context, req ollama.GenerateRequest, four
 		SpacetimeAttention: attnOut,
 		MatmulScore:        matmul,
 		WeightsFrom4DGGUF:  from4DGGUF,
-	}
+	}, nil
+}
 
-	if s.Infer.Name() == "stub" && s.Log != nil && len(demoIn) > 0 {
+func stubStreamLog(s *Service, prompt string) {
+	if s.Infer.Name() != "stub" || s.Log == nil {
+		return
+	}
+	demoIn := promptRunesToFloats(prompt)
+	if len(demoIn) > 0 {
 		s.Log.Debug("stub 4D autoregressive path",
 			slog.Int("max_tokens", inference.AutoregMaxTokens),
 			slog.Int("prompt_embed_len", len(demoIn)))
 	}
+}
 
+type inferStreamer interface {
+	GenerateStream(ctx context.Context, cx inference.Context, model, prompt string, emit func(string) error) error
+}
+
+func emitRuneDeltas(text string, emit func(string) error) error {
+	for _, r := range text {
+		if err := emit(string(r)); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// Generate produces a completion via the configured inference provider.
+func (s *Service) Generate(ctx context.Context, req ollama.GenerateRequest, fourDMode bool) (ollama.GenerateResponse, error) {
+	ic, err := s.buildInferContext(ctx, &req, fourDMode)
+	if err != nil {
+		return ollama.GenerateResponse{}, err
+	}
+	stubStreamLog(s, req.Prompt)
 	text, err := s.Infer.Generate(ctx, ic, req.Model, req.Prompt)
 	if err != nil {
 		return ollama.GenerateResponse{}, err
 	}
 	return inference.ToResponse(req.Model, text), nil
+}
+
+// StreamGenerate streams completion deltas; native stub and ollama-forward stream from the provider, others fall back to rune-chunking after Generate.
+func (s *Service) StreamGenerate(ctx context.Context, req ollama.GenerateRequest, fourDMode bool, emit func(string) error) error {
+	ic, err := s.buildInferContext(ctx, &req, fourDMode)
+	if err != nil {
+		return err
+	}
+	stubStreamLog(s, req.Prompt)
+	if sg, ok := s.Infer.(inferStreamer); ok {
+		return sg.GenerateStream(ctx, ic, req.Model, req.Prompt, emit)
+	}
+	text, err := s.Infer.Generate(ctx, ic, req.Model, req.Prompt)
+	if err != nil {
+		return err
+	}
+	return emitRuneDeltas(text, emit)
+}
+
+// StreamChat folds chat messages into a prompt and streams the completion.
+func (s *Service) StreamChat(ctx context.Context, req ollama.ChatRequest, fourDMode bool, emit func(string) error) error {
+	msgs := dedupeConsecutiveUserMessages(ensureFourDSystemPrompt(req.Messages))
+	var user strings.Builder
+	for _, m := range msgs {
+		user.WriteString(m.Role)
+		user.WriteString(": ")
+		user.WriteString(m.Content)
+		user.WriteString("\n")
+	}
+	gr := ollama.GenerateRequest{Model: req.Model, Prompt: user.String()}
+	return s.StreamGenerate(ctx, gr, fourDMode, emit)
 }
 
 // Chat maps chat messages to a single prompt and uses Generate.

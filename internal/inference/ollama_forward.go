@@ -1,12 +1,14 @@
 package inference
 
 import (
+	"bufio"
 	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
+	"strings"
 
 	"github.com/4dollama/4dollama/internal/ollama"
 )
@@ -57,4 +59,53 @@ func (o OllamaForward) Generate(ctx context.Context, _ Context, model, prompt st
 		return "", fmt.Errorf("upstream ollama json: %w", err)
 	}
 	return out.Response, nil
+}
+
+// GenerateStream proxies upstream /api/generate with stream=true and forwards each response delta.
+func (o OllamaForward) GenerateStream(ctx context.Context, _ Context, model, prompt string, emit func(string) error) error {
+	if emit == nil {
+		return nil
+	}
+	stream := true
+	body, err := json.Marshal(ollama.GenerateRequest{
+		Model: model, Prompt: prompt, Stream: &stream,
+	})
+	if err != nil {
+		return err
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, o.BaseURL+"/api/generate", bytes.NewReader(body))
+	if err != nil {
+		return err
+	}
+	req.Header.Set("Content-Type", "application/json")
+	resp, err := o.client().Do(req)
+	if err != nil {
+		return fmt.Errorf("upstream ollama: %w", err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode >= 400 {
+		raw, _ := io.ReadAll(resp.Body)
+		return fmt.Errorf("upstream ollama HTTP %d: %s", resp.StatusCode, strings.TrimSpace(string(raw)))
+	}
+	sc := bufio.NewScanner(resp.Body)
+	buf := make([]byte, 0, 64*1024)
+	sc.Buffer(buf, 4*1024*1024)
+	for sc.Scan() {
+		var ev struct {
+			Response string `json:"response"`
+			Done     bool   `json:"done"`
+		}
+		if err := json.Unmarshal(sc.Bytes(), &ev); err != nil {
+			continue
+		}
+		if ev.Response != "" {
+			if err := emit(ev.Response); err != nil {
+				return err
+			}
+		}
+		if ev.Done {
+			break
+		}
+	}
+	return sc.Err()
 }

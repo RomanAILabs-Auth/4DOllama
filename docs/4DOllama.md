@@ -4,7 +4,7 @@ This document preserves the **4DOllama** product guide for the **4DEngine** mono
 
 ## Ollama-identical interactive chat (Phase 11)
 
-`4dollama run <model>` matches **`ollama run`**-style usage: a plain **`>>> `** line REPL (no bubble-tea chrome, no duplicate placeholder lines), **streaming** assistant text over **`/api/chat`** (NDJSON flushed per rune for smooth output), and **`/help`**, **`/?`**, **`/clear`**, **`/bye`** (also **`/exit`** / **`/quit`**). Consecutive duplicate user messages are dropped server-side.
+`4dollama run <model>` matches **`ollama run`**-style usage: a plain **`>>> `** line REPL on normal stdout (scrollback and text selection work like any terminal app—no full-screen TUI). Assistant text **streams over `/api/chat`**: the server flushes NDJSON **as each token is produced** (native stub) or **as upstream Ollama chunks arrive** (hybrid), not after buffering the full reply. **`/help`** prints one short line on stderr; **`/clear`**, **`/bye`** (also **`/exit`** / **`/quit`**). Consecutive duplicate user messages are dropped server-side. If you still see a pink header or duplicate “Message… Ollama-style” hints, that is a **stale `4dollama.exe`** on PATH—rebuild this repo and put that binary first.
 
 **Logging:** Quaternion RoPE, spacetime attention, 4D GEMM, and related engine traces are **`debug`** logs only. Use **`4dollama serve -verbose`**, **`FOURD_LOG_LEVEL=debug`**, or **`LOG_LEVEL=debug`** to print them. When **`run`** auto-starts **`serve`** for interactive chat (terminal UI), the child uses **`FOURD_LOG_LEVEL=error`** so stderr stays quiet.
 

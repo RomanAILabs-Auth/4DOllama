@@ -43,9 +43,7 @@ func RunLineChat(modelName, base string) error {
 			return nil
 		}
 		if low == "/help" || low == "/?" {
-			fmt.Println("Available Commands:")
-			fmt.Println("  /clear          Clear the session context")
-			fmt.Println("  /bye            Exit")
+			fmt.Fprintln(os.Stderr, "commands: /clear  /bye")
 			continue
 		}
 		if low == "/clear" {

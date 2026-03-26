@@ -159,13 +159,44 @@ func (h *Handler) Generate(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	stream := req.Stream != nil && *req.Stream
+	if stream {
+		created := time.Now().UTC().Format(time.RFC3339Nano)
+		w.Header().Set("Content-Type", "application/x-ndjson")
+		fl, _ := w.(http.Flusher)
+		if err := h.Run.StreamGenerate(r.Context(), req, h.FourD, func(delta string) error {
+			if delta == "" {
+				return nil
+			}
+			line, _ := json.Marshal(map[string]any{
+				"model":      req.Model,
+				"created_at": created,
+				"response":   delta,
+				"done":       false,
+			})
+			_, werr := w.Write(append(line, '\n'))
+			if fl != nil {
+				fl.Flush()
+			}
+			return werr
+		}); err != nil {
+			http.Error(w, err.Error(), http.StatusNotFound)
+			return
+		}
+		line, _ := json.Marshal(map[string]any{
+			"model":      req.Model,
+			"created_at": created,
+			"response":   "",
+			"done":       true,
+		})
+		_, _ = w.Write(append(line, '\n'))
+		if fl != nil {
+			fl.Flush()
+		}
+		return
+	}
 	resp, err := h.Run.Generate(r.Context(), req, h.FourD)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusNotFound)
-		return
-	}
-	if stream {
-		writeOllamaGenerateStream(w, resp.Model, resp.CreatedAt, resp.Response, h.StreamChunkDelay)
 		return
 	}
 	w.Header().Set("Content-Type", "application/json")
@@ -184,13 +215,44 @@ func (h *Handler) Chat(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	stream := req.Stream != nil && *req.Stream
+	if stream {
+		created := time.Now().UTC().Format(time.RFC3339Nano)
+		w.Header().Set("Content-Type", "application/x-ndjson")
+		fl, _ := w.(http.Flusher)
+		if err := h.Run.StreamChat(r.Context(), req, h.FourD, func(delta string) error {
+			if delta == "" {
+				return nil
+			}
+			line, _ := json.Marshal(map[string]any{
+				"model":      req.Model,
+				"created_at": created,
+				"message":    map[string]string{"role": "assistant", "content": delta},
+				"done":       false,
+			})
+			_, werr := w.Write(append(line, '\n'))
+			if fl != nil {
+				fl.Flush()
+			}
+			return werr
+		}); err != nil {
+			http.Error(w, err.Error(), http.StatusNotFound)
+			return
+		}
+		line, _ := json.Marshal(map[string]any{
+			"model":      req.Model,
+			"created_at": created,
+			"message":    map[string]string{"role": "assistant", "content": ""},
+			"done":       true,
+		})
+		_, _ = w.Write(append(line, '\n'))
+		if fl != nil {
+			fl.Flush()
+		}
+		return
+	}
 	resp, err := h.Run.Chat(r.Context(), req, h.FourD)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusNotFound)
-		return
-	}
-	if stream {
-		writeOllamaChatStream(w, resp.Model, resp.CreatedAt, resp.Message.Content, h.StreamChunkDelay)
 		return
 	}
 	w.Header().Set("Content-Type", "application/json")
