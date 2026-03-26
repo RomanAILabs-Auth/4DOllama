@@ -64,6 +64,7 @@
 26. [Pre-submit checklist (copy for every generation)](#26-pre-submit-checklist-copy-for-every-generation)
 27. [LLM hard rules (non-negotiable)](#27-llm-hard-rules-non-negotiable)
 28. [Document maintenance](#document-maintenance)
+29. [Native AI Expert (terminal debug + interactive)](#29-native-ai-expert-terminal-debug--interactive)
 
 ---
 
@@ -171,7 +172,7 @@ Then **close that window** and open a **new** PowerShell so **`PATH`** updates. 
 | `r4 run [--strict] file.r4d [-bench] [args…]` | Temp dir build, run executable. |
 | `r4 build [--strict] file.r4d [-o out] [-bench]` | Emit persistent executable. |
 
-**`--strict`:** Disables native **Expert** hints (`src/ai/expert.go`); raw compiler/linker errors only. Use in CI.
+**`--strict`:** Disables the **Native AI Expert** (no rich debug block, no interactive session); raw compiler/linker errors only. Use in CI. **`--forgiving`** (default) re-enables Expert after **`--strict`** if both appear — **later flag wins**.
 
 **`-bench`:** Prints phase timings (`load_manifest`, `parse`, `typecheck`, LLVM, `zig_*` or `clang_*`, and `native_run` for `run`).
 
@@ -194,9 +195,9 @@ This is how **`r4d C:\Desktop\foo.r4d`** works **without** `cd` into the clone a
 
 Do **not** paste the **`PS C:\...>`** prompt into the terminal; on some systems **`PS`** is an alias and breaks the line.
 
-### Expert mode (forgiving)
+### Expert mode (forgiving, default)
 
-On compile failure, the CLI may append **local** hints (no network). See §23 for mapping symptoms → fixes.
+On **`.r4d` build/run failure**, the CLI invokes the **Native AI Expert** (`src/ai/expert.go`): a **copy-pasteable terminal debug block**, **`debug/last_build_failure.log`** append, optional **patch suggestion + [y/N] prompt**, and an **interactive** Q&A when **stdin is a TTY**. Full behavior is specified in **§29**.
 
 ---
 
@@ -552,7 +553,7 @@ Linked from **`pkgRoot/rt/roma4d_rt.c`**. Provides C symbols used by LLVM loweri
 
 ### `debug/last_build_failure.log`
 
-On failure, a structured record is appended under **package root** **`debug/last_build_failure.log`**: stage, argv, stderr, LLVM IR head.
+On failure, a structured record is appended under **package root** **`debug/last_build_failure.log`**: stage, argv, stderr, LLVM IR head. In **forgiving** mode, the **Native AI Expert** also appends a block under stage **`ai_expert`** (see **§29**).
 
 ### `R4D_DEBUG=1`
 
@@ -758,7 +759,7 @@ When the compiler changes, update:
 |------|---------|
 | Builtins | `src/compiler/typechecker.go` (`seedBuiltins`) |
 | Extensions / resolution | `src/compiler/source_ext.go` |
-| Expert hints | `src/ai/expert.go` |
+| Native AI Expert | `src/ai/expert.go` (terminal debug, interactive, LLM briefing) |
 | Keywords | `src/parser/token.go` |
 | CLI / pkg root | `internal/cli/cli.go` |
 | Windows install + PATH | `scripts/Install-R4dUserEnvironment.ps1`, `r4d.ps1`, `r4d.cmd` |
@@ -766,6 +767,59 @@ When the compiler changes, update:
 | Void main ABI | `src/compiler/codegen_llvm.go` |
 | Runtime | `rt/roma4d_rt.c` |
 | **This guide** | `docs/Roma4D_Guide.md` |
+
+---
+
+## 29. Native AI Expert (terminal debug + interactive)
+
+**What it is:** A **built-in**, **zero-network** assistant that runs when **`r4d` / `roma4d` / `r4`** fails to compile or link a **`.r4d`** file in **forgiving mode** (the default). It does **not** call external LLMs; it uses curated rules aligned with this guide.
+
+### 29.1 Terminal debug block (always in forgiving mode)
+
+On failure, stderr receives a bordered block you can **copy in full** for humans or for an external LLM. It includes:
+
+| Section | Contents |
+|--------|-----------|
+| Header / footer | `ROMA4D EXPERT DEBUG` lines (easy grep / paste boundaries) |
+| Metadata | UTC time, `GOOS`/`GOARCH`, Go version, tool name, action, source path, package root (if known), inferred line |
+| Raw message | Verbatim compiler / linker / driver text |
+| Source context | A few lines around the inferred error line (`bufio.Scanner` on the source file) |
+| Symptom hints | Short bullets mapping this failure to guide sections (e.g. SoA §11, Zig §19) |
+| Copy/paste commands | Examples: `r4d C:\full\path\file.r4d`, `R4D_DEBUG=1`, `winget install Zig.Zig`, `pip install PyQt5` when relevant |
+| Guide memory | Pointers to the normative sections of **this document** |
+| **LLM_INSTRUCTIONS** | A ready-to-paste briefing telling an assistant to output only valid **`.r4d`** per §27 / §22 |
+
+**Strict mode:** `r4d --strict ...` skips the entire Expert path and prints a minimal one-line error.
+
+### 29.2 Log file
+
+The same session is **appended** to **`debug/last_build_failure.log`** under the **package root** (via `compiler.WriteBuildFailureLog`, stage `ai_expert`). Structured linker failures from the driver may also append earlier rows for the same run.
+
+### 29.3 Interactive Expert (TTY only)
+
+If **stdin is a terminal** (detected with `golang.org/x/term`), after the debug block the Expert may:
+
+1. Show a **suggested edit** for high-confidence cases (e.g. `import *` → explicit imports) and prompt **Done? [y/N]** (acknowledgment — you apply the edit in your editor).
+2. Open a small **REPL**: type **`why`**, **`zig`**, **`pyqt`**, **`guide`**, **`llm`**, **`strict`**, **`help`**, or **`quit`**.
+
+**Disable interactive mode** (keep the printed debug block): set **`R4D_EXPERT_INTERACTIVE=0`**.
+
+### 29.4 Implementation rules (for contributors)
+
+- **Regex:** All patterns in `expert.go` use **`regexp.MustCompile`** at package scope.
+- **File reads:** Source context uses **`bufio.Scanner`** with an explicit buffer cap (no unbounded slurp of huge files).
+- **Panic safety:** The Expert **`defer recover()`** fail-opens to a short raw error line if something unexpected panics.
+- **Python vs Roma4D:** The Expert reminds users that **`.py`** is delegated to CPython via **`r4d script.py`**; **`.r4d`** stays on the native pipeline (see CLI help).
+
+### 29.5 Quick reference for users
+
+| Goal | Command / action |
+|------|-------------------|
+| Rich failure help | Run without `--strict` (default). |
+| CI / scripts only | `r4d --strict file.r4d` |
+| Skip post-mortem prompts | `R4D_EXPERT_INTERACTIVE=0` |
+| Mirror linker details | `R4D_DEBUG=1` (see §19) |
+| Feed an external LLM | Copy from **`LLM_INSTRUCTIONS`** through **`END_LLM_INSTRUCTIONS`** in the debug block |
 
 ---
 

@@ -253,6 +253,27 @@ func (lw *mirLower) lowerStmt(st parser.Stmt) {
 		lw.popCTRegion()
 		lw.emit(MIRInst{Kind: MIRSpacetimeRegion, Children: kids, ImmI: rid, ImmS: "spacetime"})
 	case *parser.IfStmt:
+		if cmp, ok := s.Test.(*parser.Compare); ok && len(cmp.Ops) == 1 && len(cmp.Comparators) == 1 && cmp.Ops[0] == parser.EQEQ &&
+			len(s.Elifs) == 0 {
+			l := lw.lowerExpr(cmp.Left)
+			r := lw.lowerExpr(cmp.Comparators[0])
+			save := lw.block
+			tb := &MIRBlock{Label: "if_then_tmp", Insts: nil}
+			lw.block = tb
+			for _, x := range s.Body {
+				lw.lowerStmt(x)
+			}
+			thenKids := append([]MIRInst(nil), tb.Insts...)
+			eb := &MIRBlock{Label: "if_else_tmp", Insts: nil}
+			lw.block = eb
+			for _, x := range s.Else {
+				lw.lowerStmt(x)
+			}
+			elseKids := append([]MIRInst(nil), eb.Insts...)
+			lw.block = save
+			lw.emit(MIRInst{Kind: MIRIfStrEq, Uses: []MIRValueID{l, r}, Children: thenKids, AltChildren: elseKids})
+			break
+		}
 		lw.emit(MIRInst{Kind: MIRComment, ImmS: "if: lowered body (v0 linear scan)"})
 		lw.emit(MIRInst{Kind: MIRComment, ImmS: "then"})
 		for _, x := range s.Body {
@@ -545,6 +566,24 @@ func (lw *mirLower) lowerCall(n *parser.Call) MIRValueID {
 		args := lw.lowerArgs(n)
 		lw.emit(MIRInst{Kind: MIRPtrStore, Uses: args})
 		return 0
+	case "mir_mmap_gguf":
+		args := lw.lowerArgs(n)
+		dst := lw.newValue()
+		lw.emit(MIRInst{Kind: MIRCall, Dst: dst, Uses: args, Name: "mir_mmap_gguf", Ty: MIRTypeRef{Name: "rawptr"}})
+		return dst
+	case "mir_get_ollama_qwen_path":
+		dst := lw.newValue()
+		lw.emit(MIRInst{Kind: MIRCall, Dst: dst, Uses: nil, Name: "mir_get_ollama_qwen_path", Ty: MIRTypeRef{Name: "str"}})
+		return dst
+	case "mir_qwen_chat_loop":
+		dst := lw.newValue()
+		lw.emit(MIRInst{Kind: MIRCall, Dst: dst, Uses: nil, Name: "mir_qwen_chat_loop", Ty: MIRTypeRef{Name: "int"}})
+		return dst
+	case "mir_cast_to_vec4_list":
+		args := lw.lowerArgs(n)
+		dst := lw.newValue()
+		lw.emit(MIRInst{Kind: MIRViewVec4List, Dst: dst, Uses: args, Ty: MIRTypeRef{Name: "list[vec4]"}})
+		return dst
 	case "ollama_demo":
 		dst := lw.newValue()
 		lw.emit(MIRInst{Kind: MIRCall, Dst: dst, Uses: nil, Name: "ollama_demo", Ty: MIRTypeRef{Name: "int"}})

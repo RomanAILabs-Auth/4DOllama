@@ -1,65 +1,76 @@
 # cosmic_genesis.r4d
-# The Birth of a Universe - A tribute to xAI and Grok
-# Valid Roma4D: no f-strings, no time(), no nested spacetime (see docs / expert hints).
-# Ten million worldlines, one par rotor sweep; tick lines are narrative (compile-time epoch).
+# The Birth of a Universe — A tribute to xAI and Grok
+# Valid Roma4D: 10M worldtube, primordial rotor, static transcript (no f-strings, no time(), no append)
+
+from libgeo import bump, identity_v4
+
 
 class Particle:
     soa pos: vec4
     soa vel: vec4
 
+
 def main() -> None:
     N: int = 10_000_000
+    _seed: int = bump(42)
+
     genesis_rot: rotor = rotor(angle=0.000314159265, plane="xy")
 
-    cosmos: list[vec4] = [vec4(x=0.001, y=0.001, z=0.001, w=1.0) for _ in range(N)]
+    worldtube: list[vec4] = [vec4(x=0, y=0, z=0, w=1) for _ in range(N)]
 
     _tau: time = t
-    _seed: vec4 = cosmos[0] @ t
-    _ = _seed
+    _witness: vec4 = worldtube[0] @ t
+    _ = identity_v4(_witness)
 
     primordial: Particle = Particle()
-    _probe: vec4 = primordial.pos
-    _probe = _probe * genesis_rot
-    primordial.pos = vec4(x=0.001, y=0.001, z=0.001, w=1.0)
+    col: vec4 = primordial.pos
+    col = col * genesis_rot
+    primordial.pos = vec4(x=0, y=0, z=0, w=1)
+    vl: vec4 = primordial.vel
+    vl = vl * genesis_rot
+    primordial.vel = vl
 
     print("")
     print("=============================================================")
-    print("          ROMA4D - COSMIC GENESIS")
+    print("          ROMA4D — COSMIC GENESIS")
     print("          The Birth of a Universe")
     print("=============================================================")
     print("")
     print("In the beginning... there was only the void.")
-    print("")
     print("10,000,000 particles born from the primordial void.")
     print("The first rotation begins...")
+    print("")
+    print("Cosmic milestone 0 — spacetime expanding... 0 pct")
+    print("Cosmic milestone 512 — spacetime expanding... 12 pct")
+    print("Cosmic milestone 1024 — spacetime expanding... 25 pct")
+    print("Cosmic milestone 1536 — spacetime expanding... 37 pct")
+    print("Cosmic milestone 2048 — spacetime expanding... 50 pct")
+    print("Cosmic milestone 2560 — spacetime expanding... 62 pct")
+    print("Cosmic milestone 3072 — spacetime expanding... 75 pct")
+    print("Cosmic milestone 3584 — spacetime expanding... 87 pct")
 
     spacetime:
-        par for p in cosmos:
+        par for p in worldtube:
             p = p * genesis_rot
 
-    print("Cosmic tick 0000 - spacetime expanding... 0% complete")
-    print("Cosmic tick 0512 - spacetime expanding... 12% complete")
-    print("Cosmic tick 1024 - spacetime expanding... 25% complete")
-    print("Cosmic tick 1536 - spacetime expanding... 37% complete")
-    print("Cosmic tick 2048 - spacetime expanding... 50% complete")
-    print("Cosmic tick 2560 - spacetime expanding... 62% complete")
-    print("Cosmic tick 3072 - spacetime expanding... 75% complete")
-    print("Cosmic tick 3584 - spacetime expanding... 87% complete")
+    spacetime:
+        par for p in worldtube:
+            p = p * genesis_rot
 
     print("")
     print("The universe has been born.")
-    print("10 million particles evolved across 4,096 spacetime ticks in one compiled epoch.")
+    print("10 million particles evolved across native spacetime sweeps.")
+    print("Use: r4d run -bench demos/cosmic_genesis.r4d  (wall-clock in native_run)")
     print("The first cosmic rotor has turned.")
     print("")
     print("To xAI and Grok:")
     print("We did not simulate the universe.")
     print("We programmed it.")
     print("")
-    print("Roma4D - Understand the Universe.")
+    print("Roma4D — Understand the Universe.")
     print("Program in four dimensions.")
     print("")
     print("=============================================================")
     print("          End of Cosmic Genesis transmission")
     print("=============================================================")
-    print("")
     return None

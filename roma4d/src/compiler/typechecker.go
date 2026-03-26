@@ -993,6 +993,41 @@ func (c *checker) inferCall(n *parser.Call) Type {
 			c.inferExpr(n.Args[1])
 			n.Typ = TypNone
 			return TypNone
+		case "mir_mmap_gguf":
+			if len(n.Args) != 1 {
+				c.errorf("mir_mmap_gguf() expects one argument (filepath str)")
+				n.Typ = TypRawPtr
+				return TypRawPtr
+			}
+			c.inferExpr(n.Args[0])
+			n.Typ = TypRawPtr
+			return TypRawPtr
+		case "mir_get_ollama_qwen_path":
+			if len(n.Args) != 0 {
+				c.errorf("mir_get_ollama_qwen_path() expects no arguments")
+				n.Typ = TypStr
+				return TypStr
+			}
+			n.Typ = TypStr
+			return TypStr
+		case "mir_cast_to_vec4_list":
+			if len(n.Args) != 2 {
+				c.errorf("mir_cast_to_vec4_list() expects (rawptr, int length)")
+				n.Typ = &List{Elem: TypVec4}
+				return n.Typ.(Type)
+			}
+			c.inferExpr(n.Args[0])
+			c.inferExpr(n.Args[1])
+			n.Typ = &List{Elem: TypVec4}
+			return n.Typ.(Type)
+		case "mir_qwen_chat_loop":
+			if len(n.Args) != 0 {
+				c.errorf("mir_qwen_chat_loop() expects no arguments")
+				n.Typ = TypInt
+				return TypInt
+			}
+			n.Typ = TypInt
+			return TypInt
 		case "int", "float", "str", "bool":
 			if len(n.Args) > 0 {
 				c.inferExpr(n.Args[0])
@@ -1201,6 +1236,10 @@ func seedBuiltins(s *Scope) {
 	add("mir_alloc", &Symbol{Name: "mir_alloc", Kind: SymBuiltin, Type: &Callable{Params: []Type{TypInt}, Result: TypRawPtr}})
 	add("mir_ptr_load", &Symbol{Name: "mir_ptr_load", Kind: SymBuiltin, Type: &Callable{Params: []Type{TypRawPtr}, Result: TypInt}})
 	add("mir_ptr_store", &Symbol{Name: "mir_ptr_store", Kind: SymBuiltin, Type: &Callable{Params: []Type{TypRawPtr, TypInt}, Result: TypNone}})
+	add("mir_mmap_gguf", &Symbol{Name: "mir_mmap_gguf", Kind: SymBuiltin, Type: &Callable{Params: []Type{TypStr}, Result: TypRawPtr}})
+	add("mir_get_ollama_qwen_path", &Symbol{Name: "mir_get_ollama_qwen_path", Kind: SymBuiltin, Type: &Callable{Params: nil, Result: TypStr}})
+	add("mir_cast_to_vec4_list", &Symbol{Name: "mir_cast_to_vec4_list", Kind: SymBuiltin, Type: &Callable{Params: []Type{TypRawPtr, TypInt}, Result: &List{Elem: TypVec4}}})
+	add("mir_qwen_chat_loop", &Symbol{Name: "mir_qwen_chat_loop", Kind: SymBuiltin, Type: &Callable{Params: nil, Result: TypInt}})
 	add("ollama_demo", &Symbol{Name: "ollama_demo", Kind: SymBuiltin, Type: &Callable{Params: nil, Result: TypInt}})
 	add("quantum_server_demo", &Symbol{Name: "quantum_server_demo", Kind: SymBuiltin, Type: &Callable{Params: nil, Result: TypInt}})
 	add("True", &Symbol{Name: "True", Kind: SymBuiltin, Type: TypBool})

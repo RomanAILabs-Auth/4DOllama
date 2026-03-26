@@ -108,6 +108,10 @@ const (
 	MIRSpacetimeRegion  // nested body with distinct temporal epoch
 	MIRTimeTravelBorrow // borrow anchored for cross-moment observation (MIR metadata)
 	MIRChronoRead       // Pass 8: compile-time temporal view; LLVM = identity (zero overhead)
+	// String equality branch (strcmp); Children = then, AltChildren = else
+	MIRIfStrEq
+	// Zero-copy list[vec4] view over a raw pointer + logical length (vec4 count)
+	MIRViewVec4List
 	// Debug / placeholder
 	MIRComment
 )
@@ -126,6 +130,8 @@ type MIRInst struct {
 	Extra string
 	// For ParRegion / UnsafeRegion: nested ops (not yet in CFG edge form)
 	Children []MIRInst
+	// For MIRIfStrEq: else branch
+	AltChildren []MIRInst
 }
 
 // MIRBlock is a basic block (single successor v0; split in Pass 6).
@@ -298,6 +304,18 @@ func formatInst(in *MIRInst) string {
 		return fmt.Sprintf("timetravel_borrow %s%s", ujoin, own)
 	case MIRChronoRead:
 		return fmt.Sprintf("%s = compiletime_temporal_view %s ct_r=%d%s", in.Dst, ujoin, in.ImmI, own)
+	case MIRIfStrEq:
+		s := "if_str_eq {"
+		for _, ch := range in.Children {
+			s += " " + formatInst(&ch)
+		}
+		s += " } else {"
+		for _, ch := range in.AltChildren {
+			s += " " + formatInst(&ch)
+		}
+		return s + " }"
+	case MIRViewVec4List:
+		return fmt.Sprintf("%s = view_vec4_list %s ty=%s", in.Dst, ujoin, in.Ty.Name)
 	case MIRComment:
 		return "// " + in.ImmS
 	default:
@@ -331,6 +349,9 @@ func mirInstListHasGPUParSpacetime(list []MIRInst) bool {
 			return true
 		}
 		if mirInstListHasGPUParSpacetime(in.Children) {
+			return true
+		}
+		if mirInstListHasGPUParSpacetime(in.AltChildren) {
 			return true
 		}
 	}

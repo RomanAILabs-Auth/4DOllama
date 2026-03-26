@@ -6,6 +6,7 @@ import (
 
 	"github.com/llir/llvm/ir"
 	"github.com/llir/llvm/ir/constant"
+	"github.com/llir/llvm/ir/enum"
 	"github.com/llir/llvm/ir/types"
 	"github.com/llir/llvm/ir/value"
 )
@@ -150,6 +151,11 @@ func (g *llvmGen) scanInsts(list []MIRInst) {
 			g.features.hasTimeTravel = true
 		case MIRChronoRead:
 			g.features.hasTimeTravel = true
+		case MIRIfStrEq:
+			g.scanInsts(in.Children)
+			g.scanInsts(in.AltChildren)
+		case MIRViewVec4List:
+			// no nested scan
 		default:
 			g.scanInsts(in.Children)
 		}
@@ -396,6 +402,20 @@ func (g *llvmGen) lowerInst(in *MIRInst) error {
 			g.vals[in.Dst] = x
 		}
 	case MIRBinOp:
+		if in.Name == "setitem" && len(in.Uses) >= 3 {
+			lst, idx, val := g.resolve(in.Uses[0]), g.resolve(in.Uses[1]), g.resolve(in.Uses[2])
+			f := g.ensureDecl("roma4d_list_set_vec4", types.Void,
+				ir.NewParam("lst", types.NewPointer(types.I8)),
+				ir.NewParam("i", types.I64),
+				ir.NewParam("v", types.NewPointer(types.Double)))
+			ii := idx
+			if !ii.Type().Equal(types.I64) {
+				ii = b.NewSExt(idx, types.I64)
+			}
+			vp := g.pointerCast(b, val, types.NewPointer(types.Double))
+			b.NewCall(f, g.pointerCast(b, lst, types.NewPointer(types.I8)), ii, vp)
+			return nil
+		}
 		if len(in.Uses) < 2 {
 			return fmt.Errorf("binop %s: missing operands", in.Name)
 		}
@@ -583,6 +603,10 @@ func (g *llvmGen) lowerInst(in *MIRInst) error {
 				return err
 			}
 		}
+	case MIRIfStrEq:
+		return g.lowerIfStrEq(in)
+	case MIRViewVec4List:
+		return g.lowerViewVec4List(in)
 	case MIRUnsafeRegion:
 		for _, ch := range in.Children {
 			if err := g.lowerInst(&ch); err != nil {
@@ -656,6 +680,80 @@ func (g *llvmGen) ptrToI64(b *ir.Block, v value.Value) value.Value {
 		return b.NewPtrToInt(v, types.I64)
 	}
 	return b.NewBitCast(v, types.I64)
+}
+
+// lowerIfStrEq emits strcmp-based branch; Children = then, AltChildren = else.
+func (g *llvmGen) lowerIfStrEq(in *MIRInst) error {
+	if len(in.Uses) < 2 {
+		return fmt.Errorf("if_str_eq: need two string operands")
+	}
+	b := g.block
+	a := g.pointerCast(b, g.resolve(in.Uses[0]), types.NewPointer(types.I8))
+	b2 := g.pointerCast(b, g.resolve(in.Uses[1]), types.NewPointer(types.I8))
+	strcmpFn := g.ensureDecl("strcmp", types.I32,
+		ir.NewParam("a", types.NewPointer(types.I8)),
+		ir.NewParam("b", types.NewPointer(types.I8)))
+	cmp := b.NewCall(strcmpFn, a, b2)
+	z := constant.NewInt(types.I32, 0)
+	cond := b.NewICmp(enum.IPredEQ, cmp, z)
+	thenB := g.fn.NewBlock(g.freshName("if_then"))
+	elseB := g.fn.NewBlock(g.freshName("if_else"))
+	mergeB := g.fn.NewBlock(g.freshName("if_merge"))
+	b.NewCondBr(cond, thenB, elseB)
+
+	g.block = thenB
+	for i := range in.Children {
+		if err := g.lowerInst(&in.Children[i]); err != nil {
+			return err
+		}
+	}
+	if g.block.Term == nil {
+		g.block.NewBr(mergeB)
+	}
+
+	g.block = elseB
+	for i := range in.AltChildren {
+		if err := g.lowerInst(&in.AltChildren[i]); err != nil {
+			return err
+		}
+	}
+	if g.block.Term == nil {
+		g.block.NewBr(mergeB)
+	}
+
+	g.block = mergeB
+	return nil
+}
+
+// lowerViewVec4List builds a stack { double* data; i64 len; i64 cap } and exposes it as i8* (roma4d_list_vec4_hdr).
+func (g *llvmGen) lowerViewVec4List(in *MIRInst) error {
+	if len(in.Uses) < 2 || in.Dst == 0 {
+		return fmt.Errorf("view_vec4_list: need dst and two operands (ptr, len)")
+	}
+	b := g.block
+	ptrRaw := g.pointerCast(b, g.resolve(in.Uses[0]), types.NewPointer(types.I8))
+	nlen := g.resolve(in.Uses[1])
+	if !nlen.Type().Equal(types.I64) {
+		nlen = b.NewSExt(nlen, types.I64)
+	}
+	hdrTy := types.NewStruct(
+		types.NewPointer(types.Double),
+		types.I64,
+		types.I64,
+	)
+	hdr := b.NewAlloca(hdrTy)
+	hdr.SetName(g.freshName("vec4_list_hdr"))
+	z := constant.NewInt(types.I32, 0)
+	dataPtr := b.NewBitCast(ptrRaw, types.NewPointer(types.Double))
+	gep0 := b.NewGetElementPtr(hdrTy, hdr, z, z)
+	b.NewStore(dataPtr, gep0)
+	i1 := constant.NewInt(types.I32, 1)
+	gep1 := b.NewGetElementPtr(hdrTy, hdr, z, i1)
+	b.NewStore(nlen, gep1)
+	gep2 := b.NewGetElementPtr(hdrTy, hdr, z, constant.NewInt(types.I32, 2))
+	b.NewStore(nlen, gep2)
+	g.vals[in.Dst] = b.NewBitCast(hdr, types.NewPointer(types.I8))
+	return nil
 }
 
 func (g *llvmGen) lowerGetItem(b *ir.Block, seq, idx value.Value) value.Value {
@@ -828,6 +926,15 @@ func (g *llvmGen) declareForCallee(name string, nArgs int) *ir.Func {
 		ret = types.I32
 		params = []*ir.Param{}
 	case "quantum_server_demo":
+		ret = types.I32
+		params = []*ir.Param{}
+	case "mir_mmap_gguf":
+		ret = types.NewPointer(types.I8)
+		params = []*ir.Param{ir.NewParam("path", types.NewPointer(types.I8))}
+	case "mir_get_ollama_qwen_path":
+		ret = types.NewPointer(types.I8)
+		params = []*ir.Param{}
+	case "mir_qwen_chat_loop":
 		ret = types.I32
 		params = []*ir.Param{}
 	case "bump":

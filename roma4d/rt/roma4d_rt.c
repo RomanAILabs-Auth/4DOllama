@@ -12,6 +12,16 @@ typedef long long roma4d_i64;
 #include <stdlib.h>
 #include <string.h>
 
+/* Directory scan: POSIX dirent (available with MinGW/MSYS2). File mapping: mmap on Unix;
+ * on native Windows with Clang/UCRT, sys/mman.h is often missing — use fread (prototype). */
+#include <dirent.h>
+#include <fcntl.h>
+#include <sys/stat.h>
+#ifndef _WIN32
+#include <sys/mman.h>
+#include <unistd.h>
+#endif
+
 int puts(const char *s);
 int system(const char *command);
 
@@ -475,13 +485,290 @@ int ollama_demo(void) {
     return system(cmd);
 }
 
+/* Must match LLVM lowerViewVec4List { double*; i64; i64 } layout (64-bit). */
+typedef struct {
+    double *data;
+    roma4d_i64 len;
+    roma4d_i64 cap;
+} roma4d_list_vec4_hdr;
+
 void roma4d_list_get_vec4(void *lst, roma4d_i64 i, double *out) {
     int k;
-    (void)lst;
-    (void)i;
-    if (out) {
+    roma4d_list_vec4_hdr *h = (roma4d_list_vec4_hdr *)lst;
+    if (!out) {
+        return;
+    }
+    if (!lst || !h->data || i < 0 || i >= h->len) {
         for (k = 0; k < 4; k++) {
             out[k] = 0.0;
         }
+        return;
     }
+    memcpy(out, h->data + i * 4, 4 * sizeof(double));
+}
+
+void roma4d_list_set_vec4(void *lst, roma4d_i64 i, const double *v) {
+    roma4d_list_vec4_hdr *h = (roma4d_list_vec4_hdr *)lst;
+    if (!lst || !h->data || !v || i < 0 || i >= h->len) {
+        return;
+    }
+    memcpy(h->data + i * 4, v, 4 * sizeof(double));
+}
+
+/* ---- mmap GGUF / Ollama blob path / interactive qwen chat ------------------ */
+
+void *mir_mmap_gguf(const char *path) {
+    if (!path || strcmp(path, "not_found") == 0) {
+        return NULL;
+    }
+#ifndef _WIN32
+    {
+        int fd;
+        struct stat st;
+        void *p;
+        fd = open(path, O_RDONLY);
+        if (fd < 0) {
+            return NULL;
+        }
+        if (fstat(fd, &st) != 0 || st.st_size <= 0) {
+            close(fd);
+            return NULL;
+        }
+        p = mmap(NULL, (size_t)st.st_size, PROT_READ, MAP_SHARED, fd, 0);
+        close(fd);
+        if (p == MAP_FAILED) {
+            return NULL;
+        }
+        return p;
+    }
+#else
+    {
+        FILE *fp;
+        long sz;
+        void *p;
+        size_t cap = (size_t)1000000 * 4 * sizeof(double);
+        size_t to_read;
+        fp = fopen(path, "rb");
+        if (!fp) {
+            return NULL;
+        }
+        if (fseek(fp, 0, SEEK_END) != 0) {
+            fclose(fp);
+            return NULL;
+        }
+        sz = ftell(fp);
+        if (sz <= 0) {
+            fclose(fp);
+            return NULL;
+        }
+        if (fseek(fp, 0, SEEK_SET) != 0) {
+            fclose(fp);
+            return NULL;
+        }
+        to_read = (size_t)sz > cap ? cap : (size_t)sz;
+        p = malloc(to_read);
+        if (!p) {
+            fclose(fp);
+            return NULL;
+        }
+        if (fread(p, 1, to_read, fp) != to_read) {
+            free(p);
+            fclose(fp);
+            return NULL;
+        }
+        fclose(fp);
+        return p;
+    }
+#endif
+}
+
+static char g_qwen_blob_path[1024];
+static const char g_not_found_lit[] = "not_found";
+
+const char *mir_get_ollama_qwen_path(void) {
+    char dir[768];
+    DIR *d;
+    struct dirent *e;
+    unsigned long long best = 0;
+
+#ifdef _WIN32
+    {
+        const char *up = getenv("USERPROFILE");
+        if (!up || !*up) {
+            return g_not_found_lit;
+        }
+        snprintf(dir, sizeof dir, "%s\\.ollama\\models\\blobs", up);
+    }
+#else
+    {
+        const char *home = getenv("HOME");
+        if (!home || !*home) {
+            return g_not_found_lit;
+        }
+        snprintf(dir, sizeof dir, "%s/.ollama/models/blobs", home);
+    }
+#endif
+
+    d = opendir(dir);
+    if (!d) {
+        return g_not_found_lit;
+    }
+    g_qwen_blob_path[0] = '\0';
+    while ((e = readdir(d)) != NULL) {
+        char full[1024];
+        struct stat st;
+        if (e->d_name[0] == '.') {
+            continue;
+        }
+#ifdef _WIN32
+        snprintf(full, sizeof full, "%s\\%s", dir, e->d_name);
+#else
+        snprintf(full, sizeof full, "%s/%s", dir, e->d_name);
+#endif
+        if (stat(full, &st) != 0 || !S_ISREG(st.st_mode)) {
+            continue;
+        }
+        {
+            unsigned long long sz = (unsigned long long)st.st_size;
+            if (sz > best) {
+                best = sz;
+                snprintf(g_qwen_blob_path, sizeof g_qwen_blob_path, "%s", full);
+            }
+        }
+    }
+    closedir(d);
+    if (best == 0 || g_qwen_blob_path[0] == '\0') {
+        return g_not_found_lit;
+    }
+    return g_qwen_blob_path;
+}
+
+/* Ollama /api/generate with stream:true returns NDJSON lines; each has a "response" string fragment. */
+static void print_ollama_stream_response_field(const char *line) {
+    const char *k = strstr(line, "\"response\"");
+    const char *p;
+    if (!k) {
+        return;
+    }
+    p = strchr(k, ':');
+    if (!p) {
+        return;
+    }
+    p++;
+    while (*p == ' ' || *p == '\t') {
+        p++;
+    }
+    if (*p != '"') {
+        return;
+    }
+    p++;
+    while (*p) {
+        if (*p == '\\') {
+            p++;
+            if (*p == 'n') {
+                putchar('\n');
+            } else if (*p == 't') {
+                putchar('\t');
+            } else if (*p == 'r') {
+                putchar('\r');
+            } else if (*p == '"' || *p == '\\') {
+                putchar((unsigned char)*p);
+            } else if (*p) {
+                putchar((unsigned char)*p);
+            }
+            if (*p) {
+                p++;
+            }
+            continue;
+        }
+        if (*p == '"') {
+            break;
+        }
+        putchar((unsigned char)*p);
+        p++;
+    }
+    fflush(stdout);
+}
+
+#ifdef _WIN32
+#define R4D_popen  _popen
+#define R4D_pclose _pclose
+#else
+#define R4D_popen  popen
+#define R4D_pclose pclose
+#endif
+
+int mir_qwen_chat_loop(void) {
+    char line[2048];
+    char path[512];
+    char cmd[2048];
+    char streambuf[65536];
+    FILE *fp;
+    FILE *pipef;
+    const char *td;
+
+#ifdef _WIN32
+    td = getenv("TEMP");
+    if (!td || !*td) {
+        td = ".";
+    }
+    snprintf(path, sizeof path, "%s\\roma4d_qwen_chat.json", td);
+#else
+    td = getenv("TMPDIR");
+    if (!td || !*td) {
+        td = "/tmp";
+    }
+    snprintf(path, sizeof path, "%s/roma4d_qwen_chat.json", td);
+#endif
+
+    puts("");
+    puts("Roma4D mir_qwen_chat_loop — streaming tokens (curl -N). Type 'exit' to quit.");
+    puts("  Ollama: http://127.0.0.1:11434  model: qwen2.5  (keep_alive 10m keeps weights hot.)");
+    puts("  Note: reply speed is Ollama/GPU-bound; the Roma4D par pass above is a separate demo, not NN inference.");
+    fflush(stdout);
+
+    while (fgets(line, sizeof line, stdin)) {
+        size_t n = strlen(line);
+        while (n > 0 && (line[n - 1] == '\n' || line[n - 1] == '\r')) {
+            line[--n] = '\0';
+        }
+        if (strcmp(line, "exit") == 0) {
+            break;
+        }
+        fp = fopen(path, "wb");
+        if (!fp) {
+            puts("[mir_qwen_chat_loop] could not write JSON payload file");
+            continue;
+        }
+        fputs("{\"model\":\"qwen2.5\",\"prompt\":", fp);
+        append_json_string(fp, line);
+        fputs(",\"stream\":true,\"keep_alive\":\"10m\"}\n", fp);
+        fclose(fp);
+
+#ifdef _WIN32
+        snprintf(cmd, sizeof cmd,
+                 "curl -sS -N -X POST http://127.0.0.1:11434/api/generate "
+                 "-H \"Content-Type: application/json\" "
+                 "-d \"@%s\"",
+                 path);
+#else
+        snprintf(cmd, sizeof cmd,
+                 "curl -sS -N -X POST http://127.0.0.1:11434/api/generate "
+                 "-H 'Content-Type: application/json' "
+                 "-d @'%s'",
+                 path);
+#endif
+        pipef = R4D_popen(cmd, "r");
+        if (!pipef) {
+            puts("[mir_qwen_chat_loop] popen(curl) failed; is curl on PATH?");
+            continue;
+        }
+        while (fgets(streambuf, (int)sizeof streambuf, pipef) != NULL) {
+            print_ollama_stream_response_field(streambuf);
+        }
+        R4D_pclose(pipef);
+        putchar('\n');
+        fflush(stdout);
+    }
+    return 0;
 }

@@ -12,8 +12,9 @@
 - 🌌 **Spacetime regions** — **`spacetime:`** blocks and **`@ t`** for **compile-time** temporal reasoning; lowering stays on the **4D LLVM** path today.
 - ⚙️ **Fast native binaries** — **MIR → LLVM IR** then **Windows: `zig cc`** (default) or **clang**; **Unix: clang**; **`-bench`** prints link phase as **`zig_*`** or **`clang_*`** plus **`native_run`** (`r4d run` only).
 - 🛠️ **Practical toolchain** — **`r4`** / **`r4d`** / **`roma4d`**, **`roma4d.toml`**, and **`debug/last_build_failure.log`** when something breaks.
+- 🧠 **Native AI Expert** — On **`.r4d`** failures (forgiving mode), a **rich terminal debug block** (copy-paste for humans or LLMs), **log append**, optional **patch hint + [y/N]**, and a small **interactive** Q&A on a TTY. Use **`r4d --strict`** for CI-only raw errors. See **Guide §29**.
 
-**Authoritative reference for coding (and for LLM-assisted development):** [`docs/Roma4D_Guide.md`](docs/Roma4D_Guide.md) — syntax, builtins, ownership, spacetime, runtime, and debugging.
+**Authoritative reference for coding (and for LLM-assisted development):** [`docs/Roma4D_Guide.md`](docs/Roma4D_Guide.md) — syntax, builtins, ownership, spacetime, runtime, debugging, and the **Native AI Expert**.
 
 ---
 
@@ -42,6 +43,19 @@ You should see **`r4d run: passed.`** (exit code **42** is intentional for `min_
 ```powershell
 .\r4d.ps1 run -bench examples\min_main.r4d
 ```
+
+### Cosmic Genesis (`demos/cosmic_genesis.r4d`)
+
+Large-scale **showcase**: **10,000,000** `list[vec4]` worldlines, **two** `spacetime:` **`par for`** rotor sweeps, **SoA** `Particle` witness, and a static epic transcript (tribute to xAI / Grok). This file is **valid Roma4D** — not Python: no **`time()`**, no **f-strings**, no **`list.append`**, no **`while`** growth loops.
+
+```powershell
+cd Roma4D
+.\r4d.ps1 run demos\cosmic_genesis.r4d
+# Wall-clock + phases:
+.\r4d.ps1 run -bench demos\cosmic_genesis.r4d
+```
+
+Regression helper (UTF-8 round-trip + `r4d run`): **`scripts\Test-CosmicGenesisDemo.ps1`**.
 
 ---
 
@@ -203,7 +217,7 @@ These forms are part of the **language story** for where/when a quantity is eval
 | `src/compiler/` | Typecheck, Ownership 2.0, MIR, LLVM, **Zig (Windows)** / **clang** driver, **`-bench`** |
 | `src/core/4d/` | Reference Cl(4,0) numerics (tests/tooling) |
 | `examples/` | **`.r4d`** samples, **Bench_4d** + Python/Rust baselines |
-| `demos/` | **Spacetime Particle Collider** (`spacetime_collider.r4d`) |
+| `demos/` | **Spacetime Particle Collider** (`spacetime_collider.r4d`), **Cosmic Genesis** (`cosmic_genesis.r4d`, 10M worldtube) |
 | `cmd/r4`, `cmd/r4d`, `cmd/roma4d` | CLI entrypoints |
 | `internal/cli` | Shared CLI implementation |
 | `r4d.ps1` | Windows helper: `go build` into `GOPATH\bin` + run |

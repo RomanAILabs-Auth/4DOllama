@@ -367,7 +367,7 @@ func BuildExecutable(pkgRoot, roma4dPath, outExe string, bench *BuildBench) ([]s
 	t = time.Now()
 	if useZig {
 		tgt := windowsZigTargetTriple()
-		compileArgs := []string{"cc", "-target", tgt, "-c", "-O1", "-o", objPath, "-x", "ir", llPath}
+		compileArgs := []string{"cc", "-target", tgt, "-c", "-O1", "-o", objPath, llPath}
 		compile := exec.Command(zig, compileArgs...)
 		compile.Env = os.Environ()
 		if out, e := compile.CombinedOutput(); e != nil {
@@ -471,3 +471,4 @@ func BuildExecutable(pkgRoot, roma4dPath, outExe string, bench *BuildBench) ([]s
 
 	return all, nil
 }
+

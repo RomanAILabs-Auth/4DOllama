@@ -30,7 +30,7 @@ func Main(argv []string) int {
 		usage()
 		return 1
 	}
-	strict, rest := stripStrictFlags(argv[1:])
+	strict, rest := stripCliModeFlags(argv[1:])
 	if len(rest) == 0 {
 		usage()
 		return 1
@@ -47,24 +47,121 @@ func Main(argv []string) int {
 	case "run":
 		return cmdRun(argv[0], rest[1:], strict)
 	default:
-		if compiler.IsRoma4DSourcePath(rest[0]) {
-			// Forgiving shorthand: r4d file.r4d  (same as run, expert hints on failure)
-			return cmdRun(argv[0], rest, strict)
+		abs, kind, err := resolveLaunchTarget(rest[0])
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "%s: %v\n", toolLabel(argv[0]), err)
+			return 1
 		}
-		fmt.Fprintf(os.Stderr, "r4d: unknown command %q\n\n", rest[0])
-		usage()
-		return 1
+		switch kind {
+		case launchPython:
+			return runPythonScript(argv[0], abs, rest[1:])
+		case launchR4D:
+			// Shorthand: r4d file.r4d  (same as run; expert hints on failure unless --strict)
+			newRest := append([]string{abs}, rest[1:]...)
+			return cmdRun(argv[0], newRest, strict)
+		default:
+			fmt.Fprintf(os.Stderr, "%s: unknown command or script %q\n\n", toolLabel(argv[0]), rest[0])
+			usage()
+			return 1
+		}
 	}
 }
 
-// stripStrictFlags removes every --strict from args (any position).
-func stripStrictFlags(args []string) (strict bool, out []string) {
-	for _, a := range args {
-		if a == "--strict" {
-			strict = true
-			continue
+type launchKind int
+
+const (
+	launchNone launchKind = iota
+	launchR4D
+	launchPython
+)
+
+// resolveLaunchTarget maps a user path to an absolute .r4d / .py file.
+// Bare names (no extension) try Roma4D extensions first (.r4d, .r4s, .roma4d), then .py / .pyw.
+func resolveLaunchTarget(arg string) (abs string, kind launchKind, err error) {
+	if strings.HasPrefix(arg, "-") {
+		return "", launchNone, fmt.Errorf("expected a script path, got flag %q", arg)
+	}
+	arg = filepath.Clean(arg)
+	ext := strings.ToLower(filepath.Ext(arg))
+
+	if ext == ".py" || ext == ".pyw" {
+		abs, err = filepath.Abs(arg)
+		if err != nil {
+			return "", launchNone, err
 		}
-		out = append(out, a)
+		fi, e := os.Stat(abs)
+		if e != nil {
+			if os.IsNotExist(e) {
+				return "", launchNone, fmt.Errorf("Python script not found: %s", abs)
+			}
+			return "", launchNone, e
+		}
+		if fi.IsDir() {
+			return "", launchNone, fmt.Errorf("expected a .py file, not a directory: %s", abs)
+		}
+		return abs, launchPython, nil
+	}
+
+	if compiler.IsRoma4DSourcePath(arg) {
+		abs, err = filepath.Abs(arg)
+		if err != nil {
+			return "", launchNone, err
+		}
+		fi, e := os.Stat(abs)
+		if e != nil {
+			if os.IsNotExist(e) {
+				return "", launchNone, fmt.Errorf("Roma4D source not found: %s", abs)
+			}
+			return "", launchNone, e
+		}
+		if fi.IsDir() {
+			return "", launchNone, fmt.Errorf("expected a Roma4D source file, not a directory: %s", abs)
+		}
+		return abs, launchR4D, nil
+	}
+
+	if ext != "" {
+		return "", launchNone, fmt.Errorf("unknown extension %q (use .r4d, .py, or omit extension to pick .r4d then .py)", ext)
+	}
+
+	absBase, err := filepath.Abs(arg)
+	if err != nil {
+		return "", launchNone, err
+	}
+	if fi, e := os.Stat(absBase); e == nil && fi.IsDir() {
+		return "", launchNone, fmt.Errorf("expected a script path, not a directory: %s", absBase)
+	}
+	for _, e := range compiler.Roma4DSourceExtensions {
+		p := absBase + e
+		fi, e2 := os.Stat(p)
+		if e2 == nil && !fi.IsDir() {
+			return p, launchR4D, nil
+		}
+	}
+	for _, e := range []string{".py", ".pyw"} {
+		p := absBase + e
+		fi, e2 := os.Stat(p)
+		if e2 == nil && !fi.IsDir() {
+			return p, launchPython, nil
+		}
+	}
+	base := filepath.Base(absBase)
+	return "", launchNone, fmt.Errorf("no script found for %q (looked for %s.r4d, legacy .r4s/.roma4d, then %s.py)", arg, base, base)
+}
+
+// stripCliModeFlags removes --strict / --forgiving from args. Default is forgiving (expert hints on).
+// If both appear, the later one wins.
+func stripCliModeFlags(args []string) (strict bool, out []string) {
+	strict = false
+	for _, a := range args {
+		switch a {
+		case "--strict":
+			strict = true
+		case "--forgiving":
+			strict = false
+		default:
+			out = append(out, a)
+		}
 	}
 	return strict, out
 }
@@ -72,33 +169,42 @@ func stripStrictFlags(args []string) (strict bool, out []string) {
 func usage() {
 	fmt.Fprintf(os.Stderr, `roma4d — the first 4D spacetime programming language
 
-Simplest way to run your program (from any folder, after one-time Windows setup):
-  r4d myfile.r4d
-  r4d C:\path\to\myfile.r4d
+The r4d and roma4d commands behave the same: one launcher for Python and for native Roma4D.
 
-That is all you need. Same as: r4d run <file.r4d>
+Run a script (Python-like ergonomics):
+  r4d myapp.py [args...]              Run with the system Python (PyQt, torch, numpy, …)
+  r4d myapp.r4d [args...]             Compile + run native high-performance Roma4D
+  r4d myapp [args...]                 If myapp has no extension: try myapp.r4d, then myapp.py
+
+Same as Python: you can pass a path with or without extension; Roma4D sources win when both exist.
 
 Usage:
-  r4d [--strict] <file.r4d> [args...]     Shorthand for run (forgiving Expert mode by default)
-  r4d [--strict] run <file.r4d> [args...]
-  r4d [--strict] build <file.r4d> [-o path] [-bench]
+  r4d [--strict|--forgiving] <file.py|.r4d> [args...]   Python or native (see above)
+  r4d [--strict|--forgiving] run <file> [args...]       Same resolution rules for the script
+  r4d [--strict|--forgiving] build <file.r4d> [-o path] [-bench]
 
 Flags:
-  --strict    Disable native Expert hints; print raw compiler errors only (CI / scripting).
+  --strict      For .r4d only: disable Native AI Expert (no rich debug block / interactive session).
+  --forgiving   For .r4d only: enable Expert (default). Ignored when running .py.
+
+Environment (Expert):
+  R4D_EXPERT_INTERACTIVE=0   Print the debug block but skip patch prompt + interactive REPL (e.g. pipes, CI).
+  R4D_DEBUG=1                Mirror linker failure details to stderr (see Guide §19).
 
 Commands:
-  build   Native compile: Windows uses Zig (zig cc) when on PATH, else LLVM clang + MinGW; Unix uses clang. -bench prints timings
-  run     Build temp binary, run; -bench adds native_run ms
+  build   Native compile (.r4d only): Windows prefers Zig (zig cc); else clang + MinGW; Unix uses clang
+  run     Build temp binary and run (.r4d), or delegate to Python (.py)
   version Print toolchain version
   help    Show this message
 
-Source extension: .r4d (official). Legacy: .r4s, .roma4d.
+Source extensions: .r4d (official). Legacy: .r4s, .roma4d. Python: .py, .pyw.
 
-Forgiving mode (default): on compile failure, a native rules engine may append Roma4D-specific hints
-(no external LLM, zero network). Use --strict to disable.
+When you run a .py file, r4d prints a short note that .r4d gives native 4D acceleration.
 
 Examples:
+  r4d tool.py
   r4d demos/hello.r4d
+  r4d mytool              # picks mytool.r4d if present, else mytool.py
   r4d --strict run examples/min_main.r4d
   r4d run -bench examples/hello_4d.r4d
 
@@ -215,12 +321,16 @@ func findPkgRoot(from string) (string, error) {
 func reportBuildFailure(tool, verb, srcAbs string, err error, strict bool) int {
 	raw := err.Error()
 	if !strict {
-		line := ai.ExtractErrorLine(raw)
-		fixed, msg := ai.RunExpertMode(srcAbs, raw, line, true)
-		if fixed {
-			fmt.Fprintf(os.Stderr, "%s %s:\n%s", tool, verb, msg)
-			return 1
-		}
+		pkgRoot, _ := findPkgRoot(srcAbs)
+		return ai.HandleFailure(ai.FailureContext{
+			Tool: tool, Verb: verb,
+			SourcePath:  srcAbs,
+			PackageRoot: pkgRoot,
+			RawError:    raw,
+			Stdin:       os.Stdin,
+			Stdout:      os.Stdout,
+			Stderr:      os.Stderr,
+		})
 	}
 	fmt.Fprintf(os.Stderr, "%s %s: %v\n", tool, verb, err)
 	return 1
@@ -234,6 +344,10 @@ func cmdBuild(argv0 string, args []string, strict bool) int {
 	for i := 0; i < len(args); i++ {
 		if args[i] == "--strict" {
 			strict = true
+			continue
+		}
+		if args[i] == "--forgiving" {
+			strict = false
 			continue
 		}
 		if args[i] == "-o" && i+1 < len(args) {
@@ -307,6 +421,10 @@ func cmdRun(argv0 string, args []string, strict bool) int {
 			strict = true
 			continue
 		}
+		if a == "--forgiving" {
+			strict = false
+			continue
+		}
 		if a == "-bench" {
 			bench = true
 			continue
@@ -315,16 +433,19 @@ func cmdRun(argv0 string, args []string, strict bool) int {
 	}
 	args = filtered
 	if len(args) < 1 {
-		fmt.Fprintf(os.Stderr, "%s run: need a .r4d source file (or legacy .r4s / .roma4d)\n", tool)
+		fmt.Fprintf(os.Stderr, "%s run: need a script (.r4d, .py, or base name)\n", tool)
 		return 1
 	}
-	src := args[0]
-	progArgs := args[1:]
-	srcAbs, err := filepath.Abs(src)
+	abs, kind, err := resolveLaunchTarget(args[0])
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "%s run: %v\n", tool, err)
 		return 1
 	}
+	if kind == launchPython {
+		return runPythonScript(argv0, abs, args[1:])
+	}
+	srcAbs := abs
+	progArgs := args[1:]
 	if err := ensureSourceFile(srcAbs); err != nil {
 		return reportBuildFailure(tool, "run", srcAbs, err, strict)
 	}
@@ -381,5 +502,50 @@ func cmdRun(argv0 string, args []string, strict bool) int {
 		return 1
 	}
 	printPassedSummary(tool, "run", len(warns))
+	return 0
+}
+
+// findPythonInterpreter returns an executable and optional argv prefix (e.g. py + [-3]).
+// Override with R4D_PYTHON or PYTHON (full path to interpreter).
+func findPythonInterpreter() (exe string, prefix []string, err error) {
+	for _, key := range []string{"R4D_PYTHON", "PYTHON"} {
+		if v := strings.TrimSpace(os.Getenv(key)); v != "" {
+			return v, nil, nil
+		}
+	}
+	for _, name := range []string{"python3", "python"} {
+		if p, e := exec.LookPath(name); e == nil {
+			return p, nil, nil
+		}
+	}
+	if runtime.GOOS == "windows" {
+		if p, e := exec.LookPath("py"); e == nil {
+			return p, []string{"-3"}, nil
+		}
+	}
+	return "", nil, fmt.Errorf("could not find Python (install Python 3 and/or set PYTHON or R4D_PYTHON)")
+}
+
+// runPythonScript executes scriptAbs with the system interpreter; progArgs are passed after the script path.
+func runPythonScript(argv0, scriptAbs string, progArgs []string) int {
+	tool := toolLabel(argv0)
+	exe, prefix, err := findPythonInterpreter()
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "%s: %v\n", tool, err)
+		return 1
+	}
+	args := append(append(append([]string{}, prefix...), scriptAbs), progArgs...)
+	fmt.Fprintf(os.Stderr, "%s: running as Python script (use .r4d extension for native 4D acceleration)\n", tool)
+	c := exec.Command(exe, args...)
+	c.Stdin = os.Stdin
+	c.Stdout = os.Stdout
+	c.Stderr = os.Stderr
+	if err := c.Run(); err != nil {
+		if x, ok := err.(*exec.ExitError); ok {
+			return x.ExitCode()
+		}
+		fmt.Fprintf(os.Stderr, "%s: %v\n", tool, err)
+		return 1
+	}
 	return 0
 }
