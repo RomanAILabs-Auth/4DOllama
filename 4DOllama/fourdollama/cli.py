@@ -13,7 +13,7 @@ from typing import Annotated, Any, Optional
 
 import typer
 
-from fourdollama.config import Settings
+from fourdollama.config import DEFAULT_PORT, Settings
 from fourdollama.engine import ensure_model, stream_engine
 from fourdollama.registry import load_registry, normalize_model_name, remove_model
 
@@ -32,7 +32,7 @@ def _try_uvloop() -> None:
 @app.command("serve")
 def cmd_serve(
     host: str | None = typer.Option(None, "--host", help="bind address"),
-    port: int | None = typer.Option(None, "--port", help="port (default 13377)"),
+    port: int | None = typer.Option(None, "--port", help=f"port (default {DEFAULT_PORT})"),
 ) -> None:
     s = Settings.load()
     h = host or s.host

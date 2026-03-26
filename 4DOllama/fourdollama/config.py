@@ -8,6 +8,10 @@ import os
 from dataclasses import dataclass
 from pathlib import Path
 
+# Product default: localhost:13377 (not Ollama’s 11434 — side‑by‑side safe).
+DEFAULT_HOST = "127.0.0.1"
+DEFAULT_PORT = 13377
+
 
 def _env_int(key: str, default: int) -> int:
     raw = os.environ.get(key, "").strip()
@@ -30,8 +34,8 @@ class Settings:
 
     @staticmethod
     def load() -> Settings:
-        host = os.environ.get("FOURDOLLAMA_HOST", "127.0.0.1").strip() or "127.0.0.1"
-        port = _env_int("FOURDOLLAMA_PORT", 13377)
+        host = os.environ.get("FOURDOLLAMA_HOST", DEFAULT_HOST).strip() or DEFAULT_HOST
+        port = _env_int("FOURDOLLAMA_PORT", DEFAULT_PORT)
         r4d_raw = os.environ.get("FOURDOLLAMA_R4D", "").strip()
         if r4d_raw:
             r4d = Path(r4d_raw).expanduser()

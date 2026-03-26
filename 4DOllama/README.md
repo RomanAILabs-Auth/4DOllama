@@ -2,6 +2,15 @@
 
 Ollama-shaped REST + CLI over **Roma4D** (`r4d`). Default bind: **127.0.0.1:13377**.
 
+## Next to Ollama (no port clash)
+
+| | **Ollama** | **4DOllama (this package)** |
+|--|------------|-----------------------------|
+| Default API | `http://127.0.0.1:11434` | `http://127.0.0.1:13377` |
+| CLI | `ollama` | `4dollama` / `4dollam` / `python -m fourdollama` |
+
+Keep **`FOURDOLLAMA_PORT` unset** (or explicitly `13377`) so both can run at once. Only change the port if you intentionally replace Ollama on the same socket.
+
 ```powershell
 cd 4DOllama
 # Use the SAME Python as `quantum_win` (or your venv):
