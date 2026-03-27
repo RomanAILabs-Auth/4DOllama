@@ -38,7 +38,7 @@ func AccessLog(log *slog.Logger) func(http.Handler) http.Handler {
 			start := time.Now()
 			ww := &wrapResponse{ResponseWriter: w, code: http.StatusOK}
 			next.ServeHTTP(ww, r)
-			log.Info("http",
+			log.Debug("http",
 				slog.String("method", r.Method),
 				slog.String("path", r.URL.Path),
 				slog.Int("status", ww.code),

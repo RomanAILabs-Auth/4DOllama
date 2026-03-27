@@ -3,6 +3,7 @@ package httpserver
 import (
 	"context"
 	"errors"
+	"fmt"
 	"log/slog"
 	"net"
 	"net/http"
@@ -16,6 +17,7 @@ import (
 	"github.com/4dollama/4dollama/internal/inference"
 	"github.com/4dollama/4dollama/internal/models"
 	"github.com/4dollama/4dollama/internal/runner"
+	"github.com/4dollama/4dollama/internal/version"
 )
 
 // Run boots the HTTP server until SIGINT/SIGTERM.
@@ -46,7 +48,9 @@ func Run(ctx context.Context, cfg config.Config, log *slog.Logger, fourDMode boo
 
 	errCh := make(chan error, 1)
 	go func() {
-		log.Info("listening",
+		// One line on stderr, Ollama-style; details are debug-only (serve -verbose / FOURD_LOG_LEVEL=debug).
+		fmt.Fprintf(os.Stderr, "Listening on http://%s (version %s)\n", cfg.Addr(), version.Version)
+		log.Debug("serve config",
 			slog.String("addr", cfg.Addr()),
 			slog.String("models", cfg.ModelsDir),
 			slog.String("ollama_models", cfg.OllamaModels),
@@ -65,11 +69,11 @@ func Run(ctx context.Context, cfg config.Config, log *slog.Logger, fourDMode boo
 	signal.Notify(sig, syscall.SIGINT, syscall.SIGTERM)
 	select {
 	case <-sig:
-		log.Info("shutdown signal")
+		log.Debug("shutdown signal")
 	case err := <-errCh:
 		return err
 	case <-ctx.Done():
-		log.Info("context cancelled")
+		log.Debug("context cancelled")
 	}
 
 	shutdownCtx, cancel := context.WithTimeout(context.Background(), 20*time.Second)

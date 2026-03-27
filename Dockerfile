@@ -30,12 +30,12 @@ COPY --from=go /out/4dollama /usr/local/bin/4dollama
 ENV LD_LIBRARY_PATH=/usr/local/lib
 ENV FOURD_GPU=cpu
 ENV FOURD_HOST=0.0.0.0
-ENV FOURD_PORT=13373
+ENV FOURD_PORT=13377
 ENV FOURD_MODELS=/models
-EXPOSE 13373
+EXPOSE 13377
 USER fourd
 VOLUME ["/models"]
 HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
-  CMD wget -qO- http://127.0.0.1:13373/healthz || exit 1
+  CMD wget -qO- http://127.0.0.1:13377/healthz || exit 1
 ENTRYPOINT ["/usr/local/bin/4dollama"]
 CMD ["serve"]

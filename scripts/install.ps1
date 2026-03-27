@@ -126,7 +126,7 @@ New-Item -ItemType Directory -Force -Path $modelsDir | Out-Null
 [Environment]::SetEnvironmentVariable("OLLAMA_MODELS", $ollamaModels, $target)
 [Environment]::SetEnvironmentVariable("FOURD_MODELS", $modelsDir, $target)
 [Environment]::SetEnvironmentVariable("FOURD_DEFAULT_MODEL", "qwen2.5", $target)
-[Environment]::SetEnvironmentVariable("FOURD_PORT", "13373", $target)
+[Environment]::SetEnvironmentVariable("FOURD_PORT", "13377", $target)
 [Environment]::SetEnvironmentVariable("OLLAMA_HOST", "http://127.0.0.1:11434", $target)
 # Native four_d_engine path (GGUF via 4dollama). Set FOURD_INFERENCE=ollama only if you want hybrid.
 [Environment]::SetEnvironmentVariable("FOURD_INFERENCE", "stub", $target)
@@ -158,7 +158,7 @@ $env:Path = "$installDir;$machinePath;$freshUserPath"
 $env:FOURD_MODELS = $modelsDir
 $env:OLLAMA_MODELS = $ollamaModels
 $env:FOURD_SHARE_OLLAMA = "true"
-$env:FOURD_PORT = "13373"
+$env:FOURD_PORT = "13377"
 $env:OLLAMA_HOST = "http://127.0.0.1:11434"
 $env:FOURD_INFERENCE = "stub"
 $env:FOURD_REPO = $root
@@ -200,7 +200,7 @@ try {
         Write-Host "  Run: fourdollama-go.cmd serve   OR   fourdollama-go.ps1 serve"
     }
 }
-$base = "http://127.0.0.1:13373"
+$base = "http://127.0.0.1:13377"
 $ok = $false
 if ($null -ne $p) {
     for ($i = 0; $i -lt 80; $i++) {

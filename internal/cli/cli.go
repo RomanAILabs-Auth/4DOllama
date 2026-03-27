@@ -30,25 +30,34 @@ func Usage() {
 Usage:
   4dollama [global flags] <command> [args]
 
-Commands:
-  serve              Start the HTTP API (default :13373, avoids Ollama on :11434)
-                       Use serve -verbose for debug-level engine logs (same as FOURD_LOG_LEVEL=debug)
+Commands (Ollama-shaped; same verbs as https://github.com/ollama/ollama CLI):
+  serve              Start the HTTP API (Ollama-compatible routes on FOURD_PORT)
+                       serve -p <port>  serve -h <host>  serve -verbose
   pull <model>       Download GGUF from Ollama registry (registry.ollama.ai)
-  import-ollama <m>  Copy GGUF from local Ollama after "ollama pull" (tensor-safe path)
-  run <model>        Ollama-style >>> REPL (streaming replies over /api/chat)
+  run <model> [prompt]  One-shot generate or >>> REPL (uses /api/chat + native 4D lattice coupling)
   list               List models (GET /api/tags)
-  ps                 Running models (stub)
+  ps                 Running models (JSON from /api/ps)
+  show <model>       Model manifest summary (best-effort; not full Modelfile dump)
+  cp <src> <dst>     Copy tag within registry (stub — use pull + rename externally)
+  rm <model>         Remove local model blob (destructive; uses registry path)
+  create             Reserved (Ollama parity — not implemented)
+  push               Reserved (Ollama parity — not implemented)
+  stop               Reserved (Ollama parity — not implemented)
+  import-ollama <m>  Copy GGUF from local Ollama after "ollama pull" (tensor-safe path)
   version            Print version
   benchmark-4d       Compare latency vs OLLAMA_HOST (if set)
   benchmark          Table: tokens/sec + coherence vs Ollama (same model)
   doctor             Health, GPU (CPU vs CUDA/Metal), models — confirms CPU mode when no GPU
+  fourd              Native 4D lattice + Cl(4,0) substrate (see fourd lattice | fourd ga-demo)
 
 Global flags:
   -help
   -fourd-mode       Enable 4D coherence features in responses
 
 Environment:
-  FOURD_HOST, FOURD_PORT (default 13373), FOURD_MODELS, FOURD_LOG_LEVEL (or LOG_LEVEL), FOURD_LOG_JSON
+  FOURD_DROPIN=1     When FOURD_HOST unset: bind 127.0.0.1 (use FOURD_PORT=11434 to replace Ollama on its port)
+  FOURD_LATTICE_KAPPA  Scale for ||QK^T||_F → lattice cognitive gravity (default 0.0015)
+  FOURD_HOST, FOURD_PORT (default 13377), FOURD_MODELS, FOURD_LOG_LEVEL (or LOG_LEVEL; default warn), FOURD_LOG_JSON
   FOURD_INFERENCE — stub|fourd|native (default): GGUF + four_d_engine 4D decode only. ollama: hybrid via OLLAMA_HOST (explicit opt-in)
   FOURD_STREAM_CHUNK_MS — optional delay between streamed NDJSON chunks (default 0; smoother perceived streaming)
   OLLAMA_HOST, OLLAMA_REGISTRY, OLLAMA_MODELS
@@ -94,15 +103,23 @@ func Run(args []string, log *slog.Logger, fourDMode bool) int {
 	case "version", "--version", "-v":
 		fmt.Println(version.Version)
 		return 0
-	case "create", "show", "rm", "cp", "export", "import", "push", "stop":
+	case "create", "export", "import", "push", "stop":
 		fmt.Fprintf(os.Stderr, "4dollama: %q is reserved for Ollama parity — not implemented in this release.\n", cmd)
 		return 2
+	case "show":
+		return cmdShow(rest, log)
+	case "rm":
+		return cmdRm(rest, log)
+	case "cp":
+		return cmdCp(rest, log)
 	case "benchmark-4d":
 		return cmdBenchmark(rest, log)
 	case "benchmark":
 		return cmdBenchmarkTable(rest, log)
 	case "doctor":
 		return cmdDoctor(log)
+	case "fourd":
+		return cmdFourd(rest, log)
 	default:
 		fmt.Fprintf(os.Stderr, "4dollama: unknown command %q\n", cmd)
 		Usage()
@@ -150,8 +167,16 @@ func cmdImportOllama(args []string, log *slog.Logger) int {
 func cmdServe(args []string, _ *slog.Logger, four bool) int {
 	fs := flag.NewFlagSet("serve", flag.ContinueOnError)
 	verbose := fs.Bool("verbose", false, "debug-level logs (4D engine diagnostics on stderr)")
+	port := fs.String("p", "", "listen port (sets FOURD_PORT for this process; default 13377)")
+	host := fs.String("h", "", "listen address (sets FOURD_HOST for this process)")
 	fs.SetOutput(io.Discard)
 	_ = fs.Parse(args)
+	if *port != "" {
+		_ = os.Setenv("FOURD_PORT", *port)
+	}
+	if *host != "" {
+		_ = os.Setenv("FOURD_HOST", *host)
+	}
 	cfg := config.Load()
 	if *verbose {
 		cfg.LogLevel = slog.LevelDebug

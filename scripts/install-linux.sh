@@ -8,4 +8,4 @@ fi
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 docker build -t fourdollama:latest "$ROOT"
 echo "Built fourdollama:latest — run with:"
-echo "  docker run --rm -p 13373:13373 -v fourd_models:/models fourdollama:latest"
+echo "  docker run --rm -p 13377:13377 -v fourd_models:/models fourdollama:latest"

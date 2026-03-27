@@ -10,8 +10,8 @@ import (
 	"time"
 )
 
-// DefaultListenPort is the built-in HTTP port (Ollama uses 11434; 4dollama uses 13373 for side-by-side).
-const DefaultListenPort = "13373"
+// DefaultListenPort is the built-in HTTP port (product default; Ollama uses 11434 — set FOURD_PORT=11434 to share that socket).
+const DefaultListenPort = "13377"
 
 // Config holds process-wide settings (env-driven for 12-factor deployments).
 type Config struct {
@@ -92,11 +92,20 @@ func Load() Config {
 		logLvl = strings.TrimSpace(os.Getenv("LOG_LEVEL"))
 	}
 	if logLvl == "" {
-		logLvl = "info"
+		// Quiet default: matches Ollama-style CLI (no per-request or engine spam on stderr).
+		logLvl = "warn"
+	}
+	host := getenv("FOURD_HOST", "0.0.0.0")
+	port := getenv("FOURD_PORT", DefaultListenPort)
+	// FOURD_DROPIN=1: prefer loopback when FOURD_HOST is unset (local “drop-in” feel). Port stays DefaultListenPort unless FOURD_PORT is set (use 11434 to replace Ollama on its socket).
+	if parseBool(getenv("FOURD_DROPIN", "false"), false) {
+		if _, set := os.LookupEnv("FOURD_HOST"); !set {
+			host = "127.0.0.1"
+		}
 	}
 	return Config{
-		Host:             getenv("FOURD_HOST", "0.0.0.0"),
-		Port:             getenv("FOURD_PORT", DefaultListenPort),
+		Host:             host,
+		Port:             port,
 		ModelsDir:        getenv("FOURD_MODELS", defModels),
 		LogLevel:         parseLevel(logLvl),
 		LogJSON:          strings.EqualFold(getenv("FOURD_LOG_JSON", "false"), "true"),

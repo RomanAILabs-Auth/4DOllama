@@ -6,7 +6,7 @@ This document preserves the **4DOllama** product guide for the **4DEngine** mono
 
 `4dollama run <model>` matches **`ollama run`**-style usage: a plain **`>>> `** line REPL on normal stdout (scrollback and text selection work like any terminal app—no full-screen TUI). Assistant text **streams over `/api/chat`**: the server flushes NDJSON **as each token is produced** (native stub) or **as upstream Ollama chunks arrive** (hybrid), not after buffering the full reply. **`/help`** prints one short line on stderr; **`/clear`**, **`/bye`** (also **`/exit`** / **`/quit`**). Consecutive duplicate user messages are dropped server-side. If you still see a pink header or duplicate “Message… Ollama-style” hints, that is a **stale `4dollama.exe`** on PATH—rebuild this repo and put that binary first.
 
-**Logging:** Quaternion RoPE, spacetime attention, 4D GEMM, and related engine traces are **`debug`** logs only. Use **`4dollama serve -verbose`**, **`FOURD_LOG_LEVEL=debug`**, or **`LOG_LEVEL=debug`** to print them. When **`run`** auto-starts **`serve`** for interactive chat (terminal UI), the child uses **`FOURD_LOG_LEVEL=error`** so stderr stays quiet.
+**Logging:** Default **`FOURD_LOG_LEVEL` / `LOG_LEVEL` is `warn`** (Ollama-quiet: no per-request access lines on stderr). Quaternion RoPE, spacetime attention, 4D GEMM, and HTTP access traces are **`debug`** only. Use **`4dollama serve -verbose`**, **`FOURD_LOG_LEVEL=debug`**, or **`LOG_LEVEL=debug`** to print them. When **`run`** auto-starts **`serve`** for interactive chat, the child uses **`FOURD_LOG_LEVEL=error`** so stderr stays clean.
 
 **System context:** Every **`/api/chat`** request gets a permanent **system** preamble (merged with any client `system` message) describing quaternion RoPE, spacetime attention, 4D GEMM, and GGUF lift so the model can answer product questions accurately.
 
@@ -29,7 +29,7 @@ After install, open a **new** terminal if your shell PATH was updated. **`4dolla
 
 Production-oriented **Ollama-compatible** HTTP API and CLI with a pluggable **4D engine** (`four_d_engine`, Rust) exposed over **CGO**. The server is suitable for containers (non-root user, health checks, structured logs, request limits, graceful shutdown). Docker image sets **`FOURD_GPU=cpu`** by default (typical CPU-only container).
 
-**Scope today:** **Default inference is native four_d_engine** (`FOURD_INFERENCE` unset or `stub|fourd|native`): pulled **GGUF** is resolved under `FOURD_MODELS`, lifted/sampled, then **autoregressive decode** runs through quaternion RoPE → SpacetimeAttention4D → projected logits in-process (no llama.cpp). **Hybrid** is **opt-in only**: set **`FOURD_INFERENCE=ollama`** and **`OLLAMA_HOST`** to forward completions to stock Ollama while keeping 4dollama’s API on **13373**. See `docs/ARCHITECTURE.md`.
+**Scope today:** **Default inference is native four_d_engine** (`FOURD_INFERENCE` unset or `stub|fourd|native`): pulled **GGUF** is resolved under `FOURD_MODELS`, lifted/sampled, then **autoregressive decode** runs through quaternion RoPE → SpacetimeAttention4D → projected logits in-process (no llama.cpp). **Hybrid** is **opt-in only**: set **`FOURD_INFERENCE=ollama`** and **`OLLAMA_HOST`** to forward completions to stock Ollama while keeping 4dollama’s API on **13377** (or your `FOURD_PORT`). See `docs/ARCHITECTURE.md`.
 
 ## Why a 4D engine?
 
@@ -69,15 +69,15 @@ roma4d/                # Roma4D language (see repository README)
 
 ### Example: curl
 
-Server listens on **13373** (not 11434). Use model **qwen2.5** when sharing Ollama blobs.
+Server listens on **13377** by default (not 11434). Use model **qwen2.5** when sharing Ollama blobs.
 
 ```bash
 # Terminal A
-FOURD_MODELS=./models FOURD_LOG_LEVEL=info ./4dollama serve
+FOURD_MODELS=./models ./4dollama serve
 
 # Terminal B
-curl -s http://127.0.0.1:13373/api/tags | jq .
-curl -s http://localhost:13373/api/generate -d '{"model":"qwen2.5","prompt":"Hello 4D world!"}' | jq .
+curl -s http://127.0.0.1:13377/api/tags | jq .
+curl -s http://localhost:13377/api/generate -d '{"model":"qwen2.5","prompt":"Hello 4D world!"}' | jq .
 ```
 
 ## Configuration (12-factor)
@@ -85,9 +85,9 @@ curl -s http://localhost:13373/api/generate -d '{"model":"qwen2.5","prompt":"Hel
 | Variable | Default | Purpose |
 |----------|---------|---------|
 | `FOURD_HOST` | `0.0.0.0` | Bind address |
-| `FOURD_PORT` | `13373` | Port (**not** 11434 — runs beside Ollama) |
+| `FOURD_PORT` | `13377` | Port (**not** 11434 — runs beside Ollama unless you set `FOURD_PORT=11434`) |
 | `FOURD_MODELS` | `~/.4dollama/models` | GGUF search path |
-| `FOURD_LOG_LEVEL` | `info` | `debug` / `info` / `warn` / `error` (if unset, **`LOG_LEVEL`** is used) |
+| `FOURD_LOG_LEVEL` | `warn` | `debug` / `info` / `warn` / `error` (if unset, **`LOG_LEVEL`** is used) |
 | `LOG_LEVEL` | _(see above)_ | Optional alias when `FOURD_LOG_LEVEL` is empty |
 | `FOURD_LOG_JSON` | `false` | JSON logs to stderr |
 | `OLLAMA_HOST` | _(empty)_ | Baseline URL for `benchmark-4d` (Windows `install.ps1` sets `http://127.0.0.1:11434`) |
@@ -142,7 +142,7 @@ make docker
 
 ```bash
 docker build -t fourdollama:latest .
-docker run --rm -p 13373:13373 -v ~/4d-models:/models fourdollama:latest
+docker run --rm -p 13377:13377 -v ~/4d-models:/models fourdollama:latest
 docker compose up --build
 ```
 
