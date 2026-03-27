@@ -55,7 +55,7 @@ export FOURD_MODELS="$MODELS_DIR"
 export FOURD_DEFAULT_MODEL="${FOURD_DEFAULT_MODEL:-qwen2.5}"
 export FOURD_PORT="${FOURD_PORT:-13377}"
 export OLLAMA_HOST="${OLLAMA_HOST:-http://127.0.0.1:11434}"
-export FOURD_INFERENCE="${FOURD_INFERENCE:-ollama}"
+export FOURD_INFERENCE="${FOURD_INFERENCE:-stub}"
 
 grep -q 'FOURD_MODELS' "$HOME/.profile" 2>/dev/null || echo "export FOURD_MODELS=\"$MODELS_DIR\"" >> "$HOME/.profile" || true
 if [ "${FOURD_GPU:-}" = "cpu" ]; then
@@ -77,7 +77,7 @@ mkdir -p "$LOG_DIR"
 echo "Starting 4dollama serve in background (log: $LOG_DIR/serve.log)…"
 nohup env FOURD_MODELS="$MODELS_DIR" OLLAMA_MODELS="$OLLAMA_MODELS" FOURD_PORT="${FOURD_PORT}" \
   FOURD_GPU="${FOURD_GPU:-}" OLLAMA_HOST="${OLLAMA_HOST}" \
-  FOURD_INFERENCE="${FOURD_INFERENCE:-ollama}" 4dollama serve >>"$LOG_DIR/serve.log" 2>&1 &
+  FOURD_INFERENCE="${FOURD_INFERENCE:-stub}" 4dollama serve >>"$LOG_DIR/serve.log" 2>&1 &
 disown 2>/dev/null || true
 
 BASE="http://127.0.0.1:${FOURD_PORT}"
