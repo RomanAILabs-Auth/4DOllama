@@ -40,10 +40,14 @@ jobs:
       - name: Go — test (stub / no cgo)
         run: CGO_ENABLED=0 go test ./...
 
-      - name: Go — build (cgo + four_d_engine)
+      - name: Go — build CLIs (default engine stub; native needs -tags fourd)
+        run: |
+          go build -o 4dollama ./cmd/4dollama
+          go build -o rq4d ./cmd/rq4d
+
+      - name: Go — build 4dollama with four_d_engine (optional)
         env:
           CGO_ENABLED: "1"
-          # Append to #cgo LDFLAGS in internal/engine: helps Ubuntu find pthread/dl when linking the Rust cdylib.
           CGO_LDFLAGS: "-L${{ github.workspace }}/4d-engine/target/release -lfour_d_engine -lm -ldl -lpthread"
           LD_LIBRARY_PATH: ${{ github.workspace }}/4d-engine/target/release
-        run: go build -o 4dollama ./cmd/4dollama
+        run: go build -tags fourd -o 4dollama-fourd ./cmd/4dollama
