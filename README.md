@@ -307,7 +307,7 @@ Use **`r4d run -bench`** or **`r4d build -bench`** to see **where time goes** in
 
 ## Also in this repository: 4DOllama
 
-**4DEngine** is a **monorepo**: alongside Roma4D you will find **4DOllama**—an Ollama-style HTTP API and CLI backed by the Rust **`four_d_engine`** crate. Full install, API tables, and configuration for that product live in **[`docs/4DOllama.md`](docs/4DOllama.md)**.
+**4DEngine** is a **monorepo**. **4DOllama** is a separate product: an **Ollama-compatible** HTTP API and **`4dollama`** CLI (Go) with **streaming** NDJSON chat/generate, default bind **127.0.0.1:13377**, and native inference through the Rust **`four_d_engine`** (CGO). The **authoritative product overview**—architecture, languages (Go / Rust / optional Python), streaming behavior, ports, and quick start—is **[`4DOllama/README.md`](4DOllama/README.md)**. Install details, API tables, and Docker: **[`docs/4DOllama.md`](docs/4DOllama.md)**.
 
 ---
 
