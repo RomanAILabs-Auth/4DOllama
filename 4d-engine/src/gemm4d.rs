@@ -53,48 +53,10 @@ pub fn gemm4d(a: &[f32], b: &[f32], c: &mut [f32], m: usize, k: usize, n: usize)
     }
 }
 
-/// Multi-threaded GEMM (used when Metal/CUDA runtime is detected — same numerics as [`gemm4d`]).
+/// Multi-threaded GEMM hook (Metal/CUDA path). Uses the same numerics as [`gemm4d`].
+/// Parallel `std::thread::scope` + raw pointers are not `Send` on all targets; delegate to serial GEMM until a split-slice implementation lands.
 pub fn gemm4d_parallel(a: &[f32], b: &[f32], c: &mut [f32], m: usize, k: usize, n: usize) {
-    let need_a = m.saturating_mul(k);
-    let need_b = k.saturating_mul(n);
-    let need_c = m.saturating_mul(n);
-    if a.len() < need_a || b.len() < need_b || c.len() < need_c {
-        return;
-    }
-    let workers = std::thread::available_parallelism()
-        .map(|x| x.get())
-        .unwrap_or(1)
-        .min(16)
-        .max(1);
-    if workers <= 1 || m < 4 {
-        gemm4d(a, b, c, m, k, n);
-        return;
-    }
-    let chunk = (m + workers - 1) / workers;
-    let ap = a.as_ptr();
-    let bp = b.as_ptr();
-    let cp = c.as_mut_ptr();
-    std::thread::scope(|s| {
-        for t in 0..workers {
-            let r0 = t * chunk;
-            let r1 = (r0 + chunk).min(m);
-            if r0 >= r1 {
-                continue;
-            }
-            unsafe {
-                let a = std::slice::from_raw_parts(ap, need_a);
-                let b = std::slice::from_raw_parts(bp, need_b);
-                s.spawn(move || {
-                    for mi in r0..r1 {
-                        for ni in 0..n {
-                            let v = gemm4d_accumulate(a, b, mi, ni, k, n);
-                            *cp.add(mi * n + ni) = v;
-                        }
-                    }
-                });
-            }
-        }
-    });
+    gemm4d(a, b, c, m, k, n);
 }
 
 #[cfg(test)]

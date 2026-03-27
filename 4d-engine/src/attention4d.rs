@@ -67,80 +67,15 @@ pub fn compute_4d_spacetime_attention(q: &[f32], k: &[f32], v: &[f32], seq_len: 
     out
 }
 
-/// One output row `i` (4 floats) — safe for parallel writes to disjoint `out[i*4..]`.
-fn spacetime_row(q: &[f32], k: &[f32], v: &[f32], seq_len: usize, i: usize) -> [f32; 4] {
-    let qi = quat_at(q, i);
-    let mut logits = Vec::with_capacity(i + 1);
-    for j in 0..=i {
-        let kj = quat_at(k, j);
-        let dot = quat_dot(qi, kj);
-        let dt = (i - j) as f32;
-        let score = dot - 0.18 * dt * dt;
-        logits.push(score * 1.25);
-    }
-    let w = softmax(&logits);
-    let mut acc = [0.0f32; 4];
-    for (j, &wj) in w.iter().enumerate() {
-        let vj = quat_at(v, j);
-        acc[0] += wj * vj.w;
-        acc[1] += wj * vj.i;
-        acc[2] += wj * vj.j;
-        acc[3] += wj * vj.k;
-    }
-    let mixed = apply_quaternion_rope(
-        vec![acc[0], acc[1], acc[2], acc[3]],
-        i,
-    );
-    let oi = Quaternion::new(mixed[0], mixed[1], mixed[2], mixed[3]).normalize();
-    [oi.w, oi.i, oi.j, oi.k]
-}
-
-/// Parallel over sequence rows when `seq_len` is large (Metal/CUDA scheduling path).
+/// Parallel hook for Metal/CUDA scheduling; same numerics as [`compute_4d_spacetime_attention`].
+/// Raw-pointer `std::thread::scope` workers are not `Send` on all rustc targets; use serial path until split slices land.
 pub fn compute_4d_spacetime_attention_parallel(
     q: &[f32],
     k: &[f32],
     v: &[f32],
     seq_len: usize,
 ) -> Vec<f32> {
-    let need = seq_len.saturating_mul(4);
-    if need == 0 || q.len() < need || k.len() < need || v.len() < need {
-        return Vec::new();
-    }
-    let workers = std::thread::available_parallelism()
-        .map(|x| x.get())
-        .unwrap_or(1)
-        .min(16)
-        .max(1);
-    if workers <= 1 || seq_len < 12 {
-        return compute_4d_spacetime_attention(q, k, v, seq_len);
-    }
-    let mut out = vec![0.0f32; need];
-    let chunk = (seq_len + workers - 1) / workers;
-    let qp = q.as_ptr();
-    let kp = k.as_ptr();
-    let vp = v.as_ptr();
-    let op = out.as_mut_ptr();
-    std::thread::scope(|s| {
-        for t in 0..workers {
-            let i0 = t * chunk;
-            let i1 = (i0 + chunk).min(seq_len);
-            if i0 >= i1 {
-                continue;
-            }
-            unsafe {
-                let q = std::slice::from_raw_parts(qp, need);
-                let k = std::slice::from_raw_parts(kp, need);
-                let v = std::slice::from_raw_parts(vp, need);
-                s.spawn(move || {
-                    for i in i0..i1 {
-                        let row = spacetime_row(q, k, v, seq_len, i);
-                        std::ptr::copy_nonoverlapping(row.as_ptr(), op.add(i * 4), 4);
-                    }
-                });
-            }
-        }
-    });
-    out
+    compute_4d_spacetime_attention(q, k, v, seq_len)
 }
 
 #[cfg(test)]

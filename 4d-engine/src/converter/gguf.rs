@@ -223,16 +223,16 @@ pub fn sample_f32_weights_from_path(path: &Path, max_elems: usize) -> Result<(Ve
     Ok((out, param_count))
 }
 
-fn write_string(buf: &mut Vec<u8>, s: &str) {
-    let b = s.as_bytes();
-    buf.extend_from_slice(&(b.len() as u64).to_le_bytes());
-    buf.extend_from_slice(b);
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
     use std::io::Cursor;
+
+    fn write_string(buf: &mut Vec<u8>, s: &str) {
+        let b = s.as_bytes();
+        buf.extend_from_slice(&(b.len() as u64).to_le_bytes());
+        buf.extend_from_slice(b);
+    }
 
     #[test]
     fn rejects_bad_magic() {

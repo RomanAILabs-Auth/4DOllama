@@ -5,7 +5,10 @@ mod lift;
 
 pub use crate::gemm4d::gemm4d;
 pub use crate::rope4d::{apply_quaternion_rope, apply_quaternion_rope_sequence};
-pub use gguf::{scan_gguf, GgufError, GgufSummary};
+pub use gguf::{
+    estimate_param_elements, sample_f32_weights_from_path, scan_gguf, scan_gguf_with_layout, GgufError,
+    GgufSummary,
+};
 pub use lift::{lift_preview_from_summary, lift_to_4d, LiftPreview, DEFAULT_W_EXTENT};
 
 use serde::Serialize;

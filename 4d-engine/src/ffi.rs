@@ -2,9 +2,10 @@
 //!
 //! // 4D ENGINE NOTE: Strings from `fd4_gguf_inspect_json` are Rust `CString`; free only via `fd4_free_string`.
 
-use crate::converter::gguf::{estimate_param_elements, sample_f32_weights_from_path, scan_gguf_with_layout};
-use crate::converter::inspect_gguf_path;
-use crate::converter::lift::lift_to_4d;
+use crate::converter::{
+    estimate_param_elements, inspect_gguf_path, lift_to_4d, sample_f32_weights_from_path,
+    scan_gguf_with_layout,
+};
 use crate::demo::compute_4d_demo;
 use crate::gpu::{self, GpuBackend};
 use crate::logits_project::project_logits_stub;
@@ -132,7 +133,8 @@ pub unsafe extern "C" fn fd4_gguf_param_count(
     let f = match std::fs::File::open(path_str) {
         Ok(f) => f,
         Err(e) => {
-            set_last_error(&e.to_string());
+            let msg = format!("{e}");
+            set_last_error(&msg);
             return -1;
         }
     };
@@ -140,7 +142,8 @@ pub unsafe extern "C" fn fd4_gguf_param_count(
     let (sum, _) = match scan_gguf_with_layout(&mut br) {
         Ok(x) => x,
         Err(e) => {
-            set_last_error(&e.to_string());
+            let msg = format!("{e}");
+            set_last_error(&msg);
             return -1;
         }
     };
@@ -174,7 +177,8 @@ pub unsafe extern "C" fn fd4_gguf_sample_lift(
     let (sample, pcount) = match sample_f32_weights_from_path(path, max_sample) {
         Ok(x) => x,
         Err(e) => {
-            set_last_error(&e.to_string());
+            let msg = format!("{e}");
+            set_last_error(&msg);
             return -1;
         }
     };
@@ -367,7 +371,7 @@ pub unsafe extern "C" fn fd4_gemm4d(
     let need_a = m.saturating_mul(kdim);
     let need_b = kdim.saturating_mul(n);
     let need_c = m.saturating_mul(n);
-    if na as usize < need_a || nb as usize < need_b || nc as usize < need_c {
+    if (na as usize) < need_a || (nb as usize) < need_b || (nc as usize) < need_c {
         set_last_error("fd4_gemm4d: buffer too small");
         return -1;
     }
@@ -436,7 +440,8 @@ pub extern "C" fn fd4_gguf_inspect_json(path_utf8: *const libc::c_char) -> *mut 
             }
         }
         Err(e) => {
-            set_last_error(&e.to_string());
+            let msg = format!("{e}");
+            set_last_error(&msg);
             null_mut()
         }
     }

@@ -160,7 +160,7 @@ pub fn gemm4d_w_contract(a: &Array4<f32>, b: &Array4<f32>) -> Array3<f32> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use ndarray::arr4;
+    use ndarray::Array4;
 
     #[test]
     fn quaternion_rotate_preserves_length_unit() {
@@ -177,12 +177,20 @@ mod tests {
     #[test]
     fn gemm4d_w_contract_matches_manual() {
         // batch=1, m=2, k=2, w=2 — expectations from full double sum.
-        let a = arr4(&[
-            [[[1.0f32, 0.0], [0.0, 1.0]], [[0.0, 1.0], [1.0, 0.0]]],
-        ]);
-        let b = arr4(&[
-            [[[1.0f32, 1.0], [0.0, 0.0]], [[0.0, 0.0], [1.0, 1.0]]],
-        ]);
+        let a = Array4::from_shape_vec(
+            (1, 2, 2, 2),
+            vec![
+                1.0, 0.0, 0.0, 1.0, 0.0, 1.0, 1.0, 0.0, //
+            ],
+        )
+        .unwrap();
+        let b = Array4::from_shape_vec(
+            (1, 2, 2, 2),
+            vec![
+                1.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 1.0, //
+            ],
+        )
+        .unwrap();
         let c = gemm4d_w_contract(&a, &b);
         assert!((c[[0, 0, 0]] - 1.0).abs() < 1e-5);
         assert!((c[[0, 0, 1]] - 1.0).abs() < 1e-5);
