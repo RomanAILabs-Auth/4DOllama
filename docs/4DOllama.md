@@ -1,10 +1,10 @@
 # 4DOllama (`4dollama`)
 
-This document preserves the **4DOllama** product guide for the **4DEngine** monorepo. The repository’s main [README](../README.md) leads with **Roma4D**; this file is the home for Ollama-style CLI, HTTP API, and `four_d_engine` build notes.
+This document preserves the **4DOllama** product guide for the **4DEngine** monorepo. The repository’s main [README](../README.md) leads with **4DOllama**; this file is the home for Ollama-style CLI, HTTP API, and `four_d_engine` build notes.
 
 ## Ollama-identical interactive chat (Phase 11)
 
-`4dollama run <model>` matches **`ollama run`**-style usage: a plain **`>>> `** line REPL on normal stdout (scrollback and text selection work like any terminal app—no full-screen TUI). Assistant text **streams over `/api/chat`**: the server flushes NDJSON **as each token is produced** (native stub) or **as upstream Ollama chunks arrive** (hybrid), not after buffering the full reply. **`/help`** prints one short line on stderr; **`/clear`**, **`/bye`** (also **`/exit`** / **`/quit`**). Consecutive duplicate user messages are dropped server-side. If you still see a pink header or duplicate “Message… Ollama-style” hints, that is a **stale `4dollama.exe`** on PATH—rebuild this repo and put that binary first.
+`4dollama run <model>` matches **`ollama run`**-style usage: a plain **`>>> `** line REPL on normal stdout (scrollback and text selection work like any terminal app—no full-screen TUI). Assistant text **streams over `/api/chat`**: the server flushes NDJSON **as each token is produced** (native stub) or **as upstream Ollama chunks arrive** (hybrid). The native stub **does not** prepend debug lines to the stream by default (Ollama parity). To restore the legacy streamed preamble (`model=`, path, prompt echo, token count), set **`FOURD_STREAM_META=1`**. **`/help`** prints one short line on stderr; **`/clear`**, **`/bye`** (also **`/exit`** / **`/quit`**). Consecutive duplicate user messages are dropped server-side. If you still see a pink header or duplicate “Message… Ollama-style” hints, that is a **stale `4dollama.exe`** on PATH—run **`scripts/Backup-And-Reinstall-4dollama.ps1`** or rebuild and put **`%USERPROFILE%\.4dollama\bin`** first on PATH.
 
 **Logging:** Default **`FOURD_LOG_LEVEL` / `LOG_LEVEL` is `warn`** (Ollama-quiet: no per-request access lines on stderr). Quaternion RoPE, spacetime attention, 4D GEMM, and HTTP access traces are **`debug`** only. Use **`4dollama serve -verbose`**, **`FOURD_LOG_LEVEL=debug`**, or **`LOG_LEVEL=debug`** to print them. When **`run`** auto-starts **`serve`** for interactive chat, the child uses **`FOURD_LOG_LEVEL=error`** so stderr stays clean.
 
@@ -98,6 +98,7 @@ curl -s http://localhost:13377/api/generate -d '{"model":"qwen2.5","prompt":"Hel
 | `FOURD_GPU` | _(auto)_ | Install scripts set **`cpu`** when no discrete GPU / CUDA path is found |
 | `FOURD_INFERENCE` | **`stub`** (default) | Native 4D decode on GGUF. Set **`ollama`** + **`OLLAMA_HOST`** only for hybrid forwarding. Aliases: `fourd`, `native`, `engine` → stub. |
 | `FOURD_STREAM_CHUNK_MS` | `0` | Optional artificial delay between NDJSON chunks when `stream: true` |
+| `FOURD_STREAM_META` | _(unset)_ | Set `1` to stream legacy stub debug lines before assistant tokens (not Ollama-like) |
 
 CLI flag `-fourd-mode` maps the spec’s `--4d-mode` (Go’s `flag` cannot register `-4d-mode`).
 

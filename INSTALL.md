@@ -47,3 +47,4 @@ Then **open a new terminal** and run **`4dollama doctor`**.
 | `scripts/install.sh` | 4DOllama only (Unix) |
 | `scripts/Install-Roma4d.ps1` | Roma4D only (Windows) |
 | `scripts/install-roma4d.sh` | Roma4D only (Unix) |
+| `scripts/Backup-And-Reinstall-4dollama.ps1` | Backup `%USERPROFILE%\.4dollama\bin\4dollama.exe` and rebuild from repo |

@@ -162,7 +162,8 @@ func (h *Handler) Generate(w http.ResponseWriter, r *http.Request) {
 	if stream {
 		created := time.Now().UTC().Format(time.RFC3339Nano)
 		w.Header().Set("Content-Type", "application/x-ndjson")
-		fl, _ := w.(http.Flusher)
+		w.Header().Set("Cache-Control", "no-cache")
+		w.Header().Set("X-Accel-Buffering", "no")
 		if err := h.Run.StreamGenerate(r.Context(), req, h.FourD, func(delta string) error {
 			if delta == "" {
 				return nil
@@ -174,8 +175,9 @@ func (h *Handler) Generate(w http.ResponseWriter, r *http.Request) {
 				"done":       false,
 			})
 			_, werr := w.Write(append(line, '\n'))
-			if fl != nil {
-				fl.Flush()
+			flushStreamWriter(w)
+			if h.StreamChunkDelay > 0 {
+				time.Sleep(h.StreamChunkDelay)
 			}
 			return werr
 		}); err != nil {
@@ -189,9 +191,7 @@ func (h *Handler) Generate(w http.ResponseWriter, r *http.Request) {
 			"done":       true,
 		})
 		_, _ = w.Write(append(line, '\n'))
-		if fl != nil {
-			fl.Flush()
-		}
+		flushStreamWriter(w)
 		return
 	}
 	resp, err := h.Run.Generate(r.Context(), req, h.FourD)
@@ -218,7 +218,8 @@ func (h *Handler) Chat(w http.ResponseWriter, r *http.Request) {
 	if stream {
 		created := time.Now().UTC().Format(time.RFC3339Nano)
 		w.Header().Set("Content-Type", "application/x-ndjson")
-		fl, _ := w.(http.Flusher)
+		w.Header().Set("Cache-Control", "no-cache")
+		w.Header().Set("X-Accel-Buffering", "no")
 		if err := h.Run.StreamChat(r.Context(), req, h.FourD, func(delta string) error {
 			if delta == "" {
 				return nil
@@ -230,8 +231,9 @@ func (h *Handler) Chat(w http.ResponseWriter, r *http.Request) {
 				"done":       false,
 			})
 			_, werr := w.Write(append(line, '\n'))
-			if fl != nil {
-				fl.Flush()
+			flushStreamWriter(w)
+			if h.StreamChunkDelay > 0 {
+				time.Sleep(h.StreamChunkDelay)
 			}
 			return werr
 		}); err != nil {
@@ -245,9 +247,7 @@ func (h *Handler) Chat(w http.ResponseWriter, r *http.Request) {
 			"done":       true,
 		})
 		_, _ = w.Write(append(line, '\n'))
-		if fl != nil {
-			fl.Flush()
-		}
+		flushStreamWriter(w)
 		return
 	}
 	resp, err := h.Run.Chat(r.Context(), req, h.FourD)
@@ -281,13 +281,62 @@ func (h *Handler) OAICompletion(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	stream := req.Stream != nil && *req.Stream
+	if stream {
+		streamOn := true
+		gr := ollama.GenerateRequest{Model: req.Model, Prompt: req.Prompt, Stream: &streamOn}
+		created := time.Now().Unix()
+		w.Header().Set("Content-Type", "text/event-stream")
+		w.Header().Set("Cache-Control", "no-cache")
+		w.Header().Set("X-Accel-Buffering", "no")
+		if err := h.Run.StreamGenerate(r.Context(), gr, h.FourD, func(delta string) error {
+			if delta == "" {
+				return nil
+			}
+			chunk := map[string]any{
+				"id":      "cmpl-fourd",
+				"object":  "text_completion",
+				"created": created,
+				"model":   req.Model,
+				"choices": []map[string]any{{
+					"index": 0,
+					"text":  delta,
+				}},
+			}
+			b, _ := json.Marshal(chunk)
+			if _, err := w.Write([]byte("data: ")); err != nil {
+				return err
+			}
+			if _, err := w.Write(b); err != nil {
+				return err
+			}
+			if _, err := w.Write([]byte("\n\n")); err != nil {
+				return err
+			}
+			flushStreamWriter(w)
+			if h.StreamChunkDelay > 0 {
+				time.Sleep(h.StreamChunkDelay)
+			}
+			return nil
+		}); err != nil {
+			http.Error(w, err.Error(), http.StatusNotFound)
+			return
+		}
+		last := map[string]any{
+			"id": "cmpl-fourd", "object": "text_completion", "created": created, "model": req.Model,
+			"choices": []map[string]any{{
+				"index": 0, "text": "", "finish_reason": "stop",
+			}},
+		}
+		b, _ := json.Marshal(last)
+		_, _ = w.Write([]byte("data: "))
+		_, _ = w.Write(b)
+		_, _ = w.Write([]byte("\n\ndata: [DONE]\n\n"))
+		flushStreamWriter(w)
+		return
+	}
 	g, err := h.Run.Generate(r.Context(), ollama.GenerateRequest{Model: req.Model, Prompt: req.Prompt, Stream: req.Stream}, h.FourD)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusNotFound)
-		return
-	}
-	if stream {
-		writeOAICompletionSSE(w, req.Model, "cmpl-fourd", time.Now().Unix(), g.Response, h.StreamChunkDelay)
 		return
 	}
 	out := ollama.OAICompletionResponse{
@@ -316,13 +365,66 @@ func (h *Handler) OAIChat(w http.ResponseWriter, r *http.Request) {
 		msgs = append(msgs, ollama.Message{Role: m.Role, Content: m.Content})
 	}
 	stream := req.Stream != nil && *req.Stream
+	if stream {
+		streamOn := true
+		created := time.Now().Unix()
+		id := "chatcmpl-fourd"
+		w.Header().Set("Content-Type", "text/event-stream")
+		w.Header().Set("Cache-Control", "no-cache")
+		w.Header().Set("X-Accel-Buffering", "no")
+		first := true
+		if err := h.Run.StreamChat(r.Context(), ollama.ChatRequest{
+			Model: req.Model, Messages: msgs, Stream: &streamOn,
+		}, h.FourD, func(delta string) error {
+			if delta == "" {
+				return nil
+			}
+			deltaObj := map[string]string{"content": delta}
+			if first {
+				deltaObj["role"] = "assistant"
+				first = false
+			}
+			chunk := map[string]any{
+				"id": id, "object": "chat.completion.chunk", "created": created, "model": req.Model,
+				"choices": []map[string]any{{
+					"index": 0, "delta": deltaObj, "finish_reason": nil,
+				}},
+			}
+			b, _ := json.Marshal(chunk)
+			if _, err := w.Write([]byte("data: ")); err != nil {
+				return err
+			}
+			if _, err := w.Write(b); err != nil {
+				return err
+			}
+			if _, err := w.Write([]byte("\n\n")); err != nil {
+				return err
+			}
+			flushStreamWriter(w)
+			if h.StreamChunkDelay > 0 {
+				time.Sleep(h.StreamChunkDelay)
+			}
+			return nil
+		}); err != nil {
+			http.Error(w, err.Error(), http.StatusNotFound)
+			return
+		}
+		final := map[string]any{
+			"id": id, "object": "chat.completion.chunk", "created": created, "model": req.Model,
+			"choices": []map[string]any{{
+				"index": 0, "delta": map[string]string{}, "finish_reason": "stop",
+			}},
+		}
+		b, _ := json.Marshal(final)
+		_, _ = w.Write([]byte("data: "))
+		_, _ = w.Write(b)
+		_, _ = w.Write([]byte("\n\ndata: [DONE]\n\n"))
+		flushStreamWriter(w)
+		return
+	}
 	cr, err := h.Run.Chat(r.Context(), ollama.ChatRequest{Model: req.Model, Messages: msgs, Stream: req.Stream}, h.FourD)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusNotFound)
-		return
-	}
-	if stream {
-		writeOAIChatSSE(w, req.Model, "chatcmpl-fourd", time.Now().Unix(), cr.Message.Content, h.StreamChunkDelay)
 		return
 	}
 	out := ollama.OAIChatResponse{

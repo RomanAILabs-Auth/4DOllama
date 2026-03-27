@@ -3,12 +3,20 @@ package inference
 import (
 	"context"
 	"fmt"
+	"os"
 	"strings"
 	"time"
 
 	"github.com/4dollama/4dollama/internal/engine"
 	"github.com/4dollama/4dollama/internal/ollama"
 )
+
+// streamMetaEnabled: when true, GenerateStream emits legacy debug lines (model=, prompt echo, token count).
+// Default off so /api/chat and /api/generate match Ollama: only assistant deltas stream incrementally.
+func streamMetaEnabled() bool {
+	v := strings.ToLower(strings.TrimSpace(os.Getenv("FOURD_STREAM_META")))
+	return v == "1" || v == "true" || v == "yes"
+}
 
 // Stub is the native four_d_engine provider: 4D autoregressive decode (RoPE → attention → projected vocab logits → sample).
 type Stub struct{}
@@ -30,7 +38,8 @@ func (Stub) Generate(ctx context.Context, cx Context, model, prompt string) (str
 	return sb.String(), err
 }
 
-// GenerateStream streams native 4D autoregressive tokens as they are sampled (plus the same preamble/footer as Generate).
+// GenerateStream streams native 4D autoregressive tokens as they are sampled.
+// By default only assistant token deltas are emitted (Ollama-compatible). Set FOURD_STREAM_META=1 for debug preamble/footer.
 func (Stub) GenerateStream(ctx context.Context, cx Context, model, prompt string, emit func(string) error) error {
 	if emit == nil {
 		emit = func(string) error { return nil }
@@ -41,46 +50,51 @@ func (Stub) GenerateStream(ctx context.Context, cx Context, model, prompt string
 		}
 		return emit(s)
 	}
-	if err := e(fmt.Sprintf("model=%s\n", model)); err != nil {
-		return err
-	}
-	if cx.ModelPath != "" {
-		if err := e(fmt.Sprintf("source=%s\n", cx.ModelPath)); err != nil {
+	if streamMetaEnabled() {
+		if err := e(fmt.Sprintf("model=%s\n", model)); err != nil {
 			return err
 		}
-	}
-	if cx.ParamCount > 0 {
-		if err := e(fmt.Sprintf("gguf_param_count=%d\n", cx.ParamCount)); err != nil {
+		if cx.ModelPath != "" {
+			if err := e(fmt.Sprintf("source=%s\n", cx.ModelPath)); err != nil {
+				return err
+			}
+		}
+		if cx.ParamCount > 0 {
+			if err := e(fmt.Sprintf("gguf_param_count=%d\n", cx.ParamCount)); err != nil {
+				return err
+			}
+		}
+		if len(cx.LiftedWeights) > 0 {
+			if err := e(fmt.Sprintf("lifted_sample_len=%d\n", len(cx.LiftedWeights))); err != nil {
+				return err
+			}
+		}
+		if cx.WeightsFrom4DGGUF {
+			if err := e("weights_source=.4dgguf\n"); err != nil {
+				return err
+			}
+		}
+		if err := e(fmt.Sprintf("4d_preflight_gemm_attn_dot_lifted=%.6f\n\n", cx.MatmulScore)); err != nil {
 			return err
 		}
-	}
-	if len(cx.LiftedWeights) > 0 {
-		if err := e(fmt.Sprintf("lifted_sample_len=%d\n", len(cx.LiftedWeights))); err != nil {
+		if err := e(prompt); err != nil {
 			return err
 		}
-	}
-	if cx.WeightsFrom4DGGUF {
-		if err := e("weights_source=.4dgguf\n"); err != nil {
+		if err := e("\n\n"); err != nil {
 			return err
 		}
-	}
-	if err := e(fmt.Sprintf("4d_preflight_gemm_attn_dot_lifted=%.6f\n\n", cx.MatmulScore)); err != nil {
-		return err
-	}
-	if err := e(prompt); err != nil {
-		return err
 	}
 	if cx.Eng == nil {
-		return e("\n\n[4D autoreg unavailable: no engine]\n")
-	}
-	if err := e("\n\n"); err != nil {
-		return err
+		return e("[4D autoreg unavailable: no engine]\n")
 	}
 	nTok, err := autoregressive4DStream(ctx, cx.Eng, cx.ModelPath, cx.LiftedWeights, prompt, emit)
 	if err != nil {
 		return err
 	}
-	return e(fmt.Sprintf("\n\n(generated_tokens=%d)\n", nTok))
+	if streamMetaEnabled() {
+		return e(fmt.Sprintf("\n\n(generated_tokens=%d)\n", nTok))
+	}
+	return nil
 }
 
 func runesToFloatsLimited(chain []rune, max int) []float32 {
