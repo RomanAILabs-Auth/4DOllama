@@ -13,7 +13,10 @@
 - ⚙️ **Fast native binaries** — **MIR → LLVM IR** then **Windows: `zig cc`** (default) or **clang**; **Unix: clang**; **`-bench`** prints **`zig_*` / `clang_*`** and **`native_run`** (`r4d run` only).
 - 🛠️ **Practical toolchain** — **`r4d`** / **`roma4d`**, **`roma4d.toml`**, and **`debug/last_build_failure.log`** when something breaks.
 
+**What you can build (vision + applications):** [`roma4d/docs/User_Guide.md`](roma4d/docs/User_Guide.md).  
 **Full programming reference (share with an LLM):** [`roma4d/docs/Roma4D_Guide.md`](roma4d/docs/Roma4D_Guide.md).
+
+**One-file manual:** **[roma4d/docs/Roma4D_Master_Guide.md](roma4d/docs/Roma4D_Master_Guide.md)** · **Doc hub:** **[roma4d/docs/README.md](roma4d/docs/README.md)** · **Install:** **[roma4d/docs/Install_Guide.md](roma4d/docs/Install_Guide.md)** · Root stub: [INSTALL.md](INSTALL.md).
 
 ---
 

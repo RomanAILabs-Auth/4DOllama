@@ -11,9 +11,9 @@ dependencies = [
   "pydantic>=2.5.0",
 ]
 
+# Only `fourdollama` — never install as `4dollama` (that name is the Go binary in %USERPROFILE%\.4dollama\bin).
 [project.scripts]
-4dollama = "fourdollama.cli:main"
-4dollam = "fourdollama.cli:main"
+fourdollama = "fourdollama.cli:main"
 
 [build-system]
 requires = ["setuptools>=68"]

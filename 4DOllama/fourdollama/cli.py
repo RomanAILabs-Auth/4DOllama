@@ -18,7 +18,12 @@ from fourdollama.config import DEFAULT_PORT, Settings
 from fourdollama.engine import ensure_model, stream_engine
 from fourdollama.registry import load_registry, normalize_model_name, remove_model
 
-app = typer.Typer(no_args_is_help=True, add_completion=False, help="4dollama — Ollama-like CLI; Roma4D (r4d) engine. Default API :13377 (not Ollama :11434).")
+app = typer.Typer(
+    no_args_is_help=True,
+    add_completion=False,
+    pretty_exceptions_enable=False,
+    help="Optional Roma4D r4d HTTP bridge (:13377). For GGUF + `>>> ` REPL use the Go CLI: 4dollama (see scripts/install.ps1 → ~/.4dollama/bin).",
+)
 
 
 def _http_base(s: Settings) -> str:
@@ -83,7 +88,7 @@ def cmd_ps() -> None:
     try:
         out = _http_json("GET", "/api/ps", s)
     except urllib.error.URLError as e:
-        print(f"4dollama ps: {e}  (start server: 4dollama serve)", file=sys.stderr)
+        print(f"fourdollama ps: {e}  (start: fourdollama serve)", file=sys.stderr)
         raise typer.Exit(1) from e
     models = out.get("models") or []
     typer.echo("NAME    ID    SIZE    PROCESSOR    UNTIL")
@@ -115,7 +120,7 @@ def cmd_show(
     try:
         out = _http_json("POST", "/api/show", s, {"model": model})
     except urllib.error.URLError as e:
-        print(f"4dollama show: {e}  (start server: 4dollama serve)", file=sys.stderr)
+        print(f"fourdollama show: {e}  (start: fourdollama serve)", file=sys.stderr)
         raise typer.Exit(1) from e
     typer.echo(json.dumps(out, indent=2))
 

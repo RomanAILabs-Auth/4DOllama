@@ -132,6 +132,9 @@ func autoregressive4DStream(ctx context.Context, eng engine.Engine, modelPath st
 		if err != nil || len(logits) != vocabSize {
 			break
 		}
+		// Native 4D lattice ↔ QK proxy: RoPE + spacetime attention drive cognitive gravity; lattice biases logits.
+		latBias := GlobalLattice().OnTokenStep(rope, attn, lifted, step)
+		ApplyLogitBias(logits, latBias)
 		PromptTokenBias(logits, tokens, prompt)
 		tid, err := eng.SampleNextTokenFlat(logits, stubSamplerTemp, stubSamplerTopK)
 		if err != nil {

@@ -1,0 +1,16 @@
+{
+  "models": [
+    {
+      "name": "phi3:latest",
+      "modified_at": "2026-03-26T22:23:05Z",
+      "size": 0,
+      "digest": "sha256:roma4d-825b0e2a",
+      "details": {
+        "family": "roma4d",
+        "format": "r4d",
+        "parameter_size": "4D-Cl(4,0)",
+        "engine": "r4d"
+      }
+    }
+  ]
+}

@@ -42,7 +42,7 @@
 
 ### Part IX — major sections (spec)
 
-The elite reference is long; scroll **Part IX** or use in-file search. The spec’s **own numbered table of contents** (§1–§29) appears again inside Part IX; **those inline links were written for the standalone `Roma4D_Guide.md`** and may not resolve in this merged file. For guaranteed jump links, open **`Roma4D_Guide.md`** alongside, or search this page for `## 23.` / section titles.
+The elite reference is long; scroll **Part IX** or use in-file search. The spec’s **own numbered table of contents** (§1–§**30**) appears again inside Part IX; **those inline links were written for the standalone `Roma4D_Guide.md`** and may not resolve in this merged file. For guaranteed jump links, open **`Roma4D_Guide.md`** alongside, or search this page for `## 23.` / section titles. **New:** **§30 Spacetime engine foundations (theory manuscript)** deciphers the RomanAILabs PowerShell/Python demos and the Cl(4,0) / Q-tensor narrative in professional language (non-normative for `.r4d` syntax).
 
 **Good search tokens:** `Mental model`, `LLM hard rules`, `Pre-submit checklist`, `Compiler and linker error catalog`, `Native AI Expert`.
 

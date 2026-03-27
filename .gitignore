@@ -25,3 +25,7 @@ Thumbs.db
 
 # Local README backup from scripted edits
 README.md.bak
+
+# Local archive dumps (not part of source)
+/roma4d.zip
+/roma4d (2).zip

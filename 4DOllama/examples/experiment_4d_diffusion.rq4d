@@ -1,0 +1,6 @@
+# Placeholder experiment descriptor for RQ4D-style runners.
+# The 4D diffusion + QKT coupling demo lives in the monorepo Go command:
+#   go run ./cmd/4dollama fourd lattice
+#
+# If using RomanAILabs-Auth/RomaQuantum4D, replace this file with a valid
+# lattice CLI invocation or rq4d-core JSON payload per that repo's guide.
