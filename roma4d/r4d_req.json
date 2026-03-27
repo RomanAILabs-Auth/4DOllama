@@ -1,0 +1,1 @@
+{"snippet": "for i in range(10): d = {\"k\": i}"}

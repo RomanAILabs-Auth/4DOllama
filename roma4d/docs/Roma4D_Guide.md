@@ -2,6 +2,8 @@
 
 **Audience:** Expert practitioners and **automated code generators** (LLMs). Treat this document as a **normative specification** for what **compiles and links today** in toolchain **0.1.0**. If something is not described here as supported, **do not emit it**—prefer a smaller, boring program that builds.
 
+**How-to hub (install, use, LLM workflow, debugging, shipping):** [README.md](README.md) · **All-in-one book:** [Roma4D_Master_Guide.md](Roma4D_Master_Guide.md)
+
 **Official source extension:** **`.r4d`**. Legacy **`.r4s`** and **`.roma4d`** are still accepted by the driver. **`.py` is not Roma4D.**
 
 **Edition:** `2025` in `roma4d.toml` names the staged feature set.

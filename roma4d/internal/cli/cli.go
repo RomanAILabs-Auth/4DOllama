@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"os/exec"
@@ -30,7 +31,7 @@ func Main(argv []string) int {
 		usage()
 		return 1
 	}
-	strict, rest := stripCliModeFlags(argv[1:])
+	strict, pyLaunch, rest := stripLauncherFlags(argv[1:])
 	if len(rest) == 0 {
 		usage()
 		return 1
@@ -45,7 +46,7 @@ func Main(argv []string) int {
 	case "build":
 		return cmdBuild(argv[0], rest[1:], strict)
 	case "run":
-		return cmdRun(argv[0], rest[1:], strict)
+		return cmdRun(argv[0], rest[1:], strict, pyLaunch)
 	default:
 		abs, kind, err := resolveLaunchTarget(rest[0])
 		if err != nil {
@@ -54,11 +55,11 @@ func Main(argv []string) int {
 		}
 		switch kind {
 		case launchPython:
-			return runPythonScript(argv[0], abs, rest[1:])
+			return runPythonScript(argv[0], abs, rest[1:], pyLaunch)
 		case launchR4D:
 			// Shorthand: r4d file.r4d  (same as run; expert hints on failure unless --strict)
 			newRest := append([]string{abs}, rest[1:]...)
-			return cmdRun(argv[0], newRest, strict)
+			return cmdRun(argv[0], newRest, strict, pyLaunch)
 		default:
 			fmt.Fprintf(os.Stderr, "%s: unknown command or script %q\n\n", toolLabel(argv[0]), rest[0])
 			usage()
@@ -149,21 +150,34 @@ func resolveLaunchTarget(arg string) (abs string, kind launchKind, err error) {
 	return "", launchNone, fmt.Errorf("no script found for %q (looked for %s.r4d, legacy .r4s/.roma4d, then %s.py)", arg, base, base)
 }
 
-// stripCliModeFlags removes --strict / --forgiving from args. Default is forgiving (expert hints on).
-// If both appear, the later one wins.
-func stripCliModeFlags(args []string) (strict bool, out []string) {
+// pyLaunchOpts carries HyperEngine / Python launcher flags (stripped before script resolution).
+type pyLaunchOpts struct {
+	Watch bool
+	Hyper ai.HyperOptions
+}
+
+// stripLauncherFlags removes --strict, --forgiving, and HyperEngine flags.
+// Default is forgiving (expert hints on for .r4d). If --strict/--forgiving both appear, the later wins.
+func stripLauncherFlags(args []string) (strict bool, py pyLaunchOpts, out []string) {
 	strict = false
+	py.Hyper = ai.DefaultHyperOptions()
 	for _, a := range args {
 		switch a {
 		case "--strict":
 			strict = true
 		case "--forgiving":
 			strict = false
+		case "--explain":
+			py.Hyper.Explain = true
+		case "--watch":
+			py.Watch = true
+		case "--no-hyperengine":
+			py.Hyper.NoBanner = true
 		default:
 			out = append(out, a)
 		}
 	}
-	return strict, out
+	return strict, py, out
 }
 
 func usage() {
@@ -179,13 +193,21 @@ Run a script (Python-like ergonomics):
 Same as Python: you can pass a path with or without extension; Roma4D sources win when both exist.
 
 Usage:
-  r4d [--strict|--forgiving] <file.py|.r4d> [args...]   Python or native (see above)
-  r4d [--strict|--forgiving] run <file> [args...]       Same resolution rules for the script
+  r4d [launcher flags] <file.py|.r4d> [args...]         Python or native (see below)
+  r4d [launcher flags] run <file> [args...]             Same resolution rules for the script
   r4d [--strict|--forgiving] build <file.r4d> [-o path] [-bench]
 
-Flags:
-  --strict      For .r4d only: disable Native AI Expert (no rich debug block / interactive session).
-  --forgiving   For .r4d only: enable Expert (default). Ignored when running .py.
+Launcher flags (Python / HyperEngine):
+  --explain          Print HyperEngine analysis (AST + heuristics); execution stays CPython.
+  --watch            Re-run the .py when the file changes (poll). HyperEngine banner/analysis once per session.
+  --no-hyperengine   Skip HyperEngine subprocess + banner (fastest; still plain Python).
+  --strict           For .r4d only: disable Native AI Expert (no rich debug block / interactive session).
+  --forgiving        For .r4d only: enable Expert (default). Ignored when running .py.
+
+Environment:
+  R4D_HYPERENGINE=0           Same as --no-hyperengine for .py runs.
+  R4D_KINETIC_TRY_COMPILE=1   With r4d --explain on .py: compile+run generated Kinetic kernel (optional; needs roma4d.toml + toolchain).
+  R4D_COGNITIVE=0|1           Phase 3: 0=disable GGUF cognitive bridge; 1=force on if model_path exists. Default: use roma4d.toml [llm].
 
 Environment (Expert):
   R4D_EXPERT_INTERACTIVE=0   Print the debug block but skip patch prompt + interactive REPL (e.g. pipes, CI).
@@ -202,7 +224,8 @@ Commands:
 
 Source extensions: .r4d (official). Legacy: .r4s, .roma4d. Python: .py, .pyw.
 
-When you run a .py file, r4d prints a short note that .r4d gives native 4D acceleration.
+When you run a .py file, Roma4D HyperEngine (Phase 1) analyzes the AST and prints a short banner;
+execution is always your real interpreter (PyQt, torch, numpy, …). Use .r4d for native 4D binaries.
 
 Examples:
   r4d tool.py
@@ -416,7 +439,7 @@ func cmdBuild(argv0 string, args []string, strict bool) int {
 	return 0
 }
 
-func cmdRun(argv0 string, args []string, strict bool) int {
+func cmdRun(argv0 string, args []string, strict bool, pyLaunch pyLaunchOpts) int {
 	tool := toolLabel(argv0)
 	bench := false
 	var filtered []string
@@ -446,7 +469,7 @@ func cmdRun(argv0 string, args []string, strict bool) int {
 		return 1
 	}
 	if kind == launchPython {
-		return runPythonScript(argv0, abs, args[1:])
+		return runPythonScript(argv0, abs, args[1:], pyLaunch)
 	}
 	srcAbs := abs
 	progArgs := args[1:]
@@ -531,15 +554,72 @@ func findPythonInterpreter() (exe string, prefix []string, err error) {
 }
 
 // runPythonScript executes scriptAbs with the system interpreter; progArgs are passed after the script path.
-func runPythonScript(argv0, scriptAbs string, progArgs []string) int {
+func runPythonScript(argv0, scriptAbs string, progArgs []string, launch pyLaunchOpts) int {
+	if launch.Watch {
+		return runPythonWatch(argv0, scriptAbs, progArgs, launch)
+	}
+	return runPythonOnce(argv0, scriptAbs, progArgs, launch, true)
+}
+
+func runPythonWatch(argv0, scriptAbs string, progArgs []string, launch pyLaunchOpts) int {
+	tool := toolLabel(argv0)
+	var lastMod time.Time
+	first := true
+	for {
+		fi, err := os.Stat(scriptAbs)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "%s --watch: %v\n", tool, err)
+			return 1
+		}
+		mod := fi.ModTime()
+		if !first && !mod.After(lastMod) {
+			time.Sleep(700 * time.Millisecond)
+			continue
+		}
+		lastMod = mod
+		if !first {
+			fmt.Fprintf(os.Stderr, "%s --watch: change detected, re-running…\n", tool)
+		}
+		code := runPythonOnce(argv0, scriptAbs, progArgs, launch, first)
+		first = false
+		if code != 0 {
+			fmt.Fprintf(os.Stderr, "%s --watch: exit %d (fix and save to retry; Ctrl+C to stop)\n", tool, code)
+		}
+		time.Sleep(700 * time.Millisecond)
+	}
+}
+
+func runPythonOnce(argv0, scriptAbs string, progArgs []string, launch pyLaunchOpts, doHyper bool) int {
 	tool := toolLabel(argv0)
 	exe, prefix, err := findPythonInterpreter()
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "%s: %v\n", tool, err)
 		return 1
 	}
+	if v := strings.TrimSpace(os.Getenv("R4D_HYPERENGINE")); v == "0" || strings.EqualFold(v, "off") {
+		launch.Hyper.NoBanner = true
+	}
+	analyze := launch.Hyper.Explain || !launch.Hyper.NoBanner
+	if analyze {
+		ctx := context.Background()
+		plan, aerr := ai.AnalyzePython(ctx, scriptAbs, exe, prefix, launch.Hyper)
+		if launch.Hyper.Explain && plan != nil {
+			pkgRoot, _ := ai.FindRoma4dPackageRoot(scriptAbs)
+			tryKineticCompile := strings.TrimSpace(os.Getenv("R4D_KINETIC_TRY_COMPILE")) == "1"
+			kr, _ := ai.RunKineticPipeline(ctx, scriptAbs, exe, prefix, pkgRoot, tryKineticCompile, launch.Hyper.Explain)
+			plan.Kinetic = kr
+		}
+		if launch.Hyper.Explain {
+			ai.Explain(os.Stderr, tool, plan)
+		} else if doHyper && plan != nil {
+			ai.PrintBanner(os.Stderr, tool, plan)
+		} else if doHyper && aerr != nil {
+			ai.PrintBanner(os.Stderr, tool, nil)
+		}
+	} else if doHyper {
+		fmt.Fprintf(os.Stderr, "%s: running as Python script (HyperEngine off; use .r4d for native 4D)\n", tool)
+	}
 	args := append(append(append([]string{}, prefix...), scriptAbs), progArgs...)
-	fmt.Fprintf(os.Stderr, "%s: running as Python script (use .r4d extension for native 4D acceleration)\n", tool)
 	c := exec.Command(exe, args...)
 	c.Stdin = os.Stdin
 	c.Stdout = os.Stdout

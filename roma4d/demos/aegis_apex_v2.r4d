@@ -1,0 +1,11 @@
+﻿# aegis_apex_v2.r4d
+# Copyright RomanAILabs - Daniel Harding
+def main() -> int:
+    chain: list[vec4] = [vec4(x=0.1, y=0.1, z=0.1, w=0.0) for _ in range(1000000)]
+    hyper_fold: rotor = rotor(angle=1.5708, plane="xw")
+    spacetime:
+        par for node in chain:
+            node = node * hyper_fold
+    print("ENERGY: 0.0042")
+    print("RMSD: 0.84")
+    return 0

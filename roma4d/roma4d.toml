@@ -16,3 +16,11 @@ incremental = true
 [systems]
 gc = false
 unsafe = true
+
+# Phase 3 — HyperEngine cognitive controller (llama-cpp-python + local GGUF).
+# When model_path points to an existing file, `r4d --explain script.py` may call the GGUF bridge for blocked Kinetic loops.
+# Override: R4D_COGNITIVE=0 to disable, R4D_COGNITIVE=1 to force on if the file exists.
+[llm]
+model_path = "C:/Users/Asus/Downloads/Phi-3-mini-4k-instruct-q4.gguf"
+n_gpu_layers = 0
+# cognitive_enabled = true

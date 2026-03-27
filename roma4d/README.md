@@ -14,6 +14,7 @@
 - 🛠️ **Practical toolchain** — **`r4`** / **`r4d`** / **`roma4d`**, **`roma4d.toml`**, and **`debug/last_build_failure.log`** when something breaks.
 - 🧠 **Native AI Expert** — On **`.r4d`** failures (forgiving mode), a **rich terminal debug block** (copy-paste for humans or LLMs), **log append**, optional **patch hint + [y/N]**, and a small **interactive** Q&A on a TTY. Use **`r4d --strict`** for CI-only raw errors. See **Guide §29**.
 
+**What Roma4D is for (capabilities, vision, wild applications):** [`docs/User_Guide.md`](docs/User_Guide.md).  
 **Authoritative reference for coding (and for LLM-assisted development):** [`docs/Roma4D_Guide.md`](docs/Roma4D_Guide.md) — syntax, builtins, ownership, spacetime, runtime, debugging, and the **Native AI Expert**.
 
 ---

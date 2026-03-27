@@ -1,0 +1,71 @@
+﻿# singularity_engine.r4d
+# The Kerr-Newman Singularity Engine: 4D Frame Dragging
+# Strictly compliant with Roma4D v0.1.0
+
+from libgeo import identity_v4
+
+# Strictly using the C-linked Particle class
+class Particle:
+    soa pos: vec4
+    soa vel: vec4
+
+def main() -> int:
+    print("")
+    print("=============================================================")
+    print("       ROMA4D: KERR-NEWMAN SINGULARITY ENGINE")
+    print("=============================================================")
+    print("Spawning 5,000,000 particles in flat spacetime...")
+    
+    universe: list[vec4] = [vec4(x=0, y=0, z=0, w=1) for _ in range(5000000)]
+    
+    # 4D Spacetime Curvature Rotors
+    r_gravity: rotor = rotor(angle=0.0015, plane="xw")
+    r_drag: rotor = rotor(angle=0.0314, plane="xy")
+    r_mag_pole: rotor = rotor(angle=0.0050, plane="yz")
+
+    print("Validating Quantum State (Ownership 2.0 & Tensor Algebra)...")
+    witness: Particle = Particle()
+    base_field: multivector = multivector()
+    
+    # Strict SoA Cycle: Read -> Mutate -> Write-back
+    w_pos: vec4 = witness.pos
+    w_pos = w_pos * r_gravity
+    witness.pos = vec4(x=0, y=0, z=0, w=1)
+    
+    # Free-floating Geometric tests (avoids SoA linear consumption)
+    v_test: vec4 = vec4(x=1, y=0, z=0, w=0)
+    flux_scalar: float = v_test | base_field
+    tensor_spin: multivector = v_test ^ base_field
+
+    print("EPOCH 1: Accretion Disk Formation...")
+    print("Simulating 64 temporal ticks of extreme frame dragging...")
+    spacetime:
+        tick_1 = 0
+        while tick_1 < 64:
+            par for p in universe:
+                p = p * r_drag
+                p = p * r_gravity
+            tick_1 = tick_1 + 1
+
+    print("EPOCH 2: Electromagnetic Polar Jet Ejection...")
+    print("Simulating 32 temporal ticks of Z-axis magnetic repulsion...")
+    spacetime:
+        tick_2 = 0
+        while tick_2 < 32:
+            par for p in universe:
+                p = p * r_mag_pole
+                p = p * r_gravity
+            tick_2 = tick_2 + 1
+
+    print("")
+    print("=============================================================")
+    print("                 SINGULARITY STABLE")
+    print("=============================================================")
+    print("> 5,000,000 particles processed.")
+    print("> 96 total geometric spacetime epochs.")
+    print("> 960,000,000 distinct Cl(4,0) tensor operations executed.")
+    print("=============================================================")
+    print("Roma4D Engine Nominal.")
+    print("=============================================================")
+    
+    return 0

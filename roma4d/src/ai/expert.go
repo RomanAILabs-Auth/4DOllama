@@ -412,7 +412,11 @@ func answerInteractive(ctx *FailureContext, low, original string) {
 	case reZig.MatchString(low):
 		_, _ = fmt.Fprintf(ctx.stderr(), "Zig is the default Windows linker driver (zig cc). Install Zig, add to PATH, or set R4D_ZIG. See Guide §1 and §19.\n")
 	case rePython.MatchString(low):
-		_, _ = fmt.Fprintf(ctx.stderr(), "Roma4D .r4d files are AOT-compiled, not CPython. For PyQt/torch/numpy use `r4d yourapp.py` to delegate to Python. Guide §21.\n")
+		_, _ = fmt.Fprintf(ctx.stderr(), "Roma4D .r4d files are AOT-compiled, not CPython. For PyQt/torch/numpy use `r4d yourapp.py` (real interpreter). HyperEngine: `r4d --explain yourapp.py` (Phase 2 Kinetic Bridge lists liftable loops + generated .r4d). If a loop is blocked, the explain output names the Python construct (e.g. user function call, dict, attribute). Guide §21.\n")
+	case strings.Contains(low, "kinetic") || strings.Contains(low, "hyperengine"):
+		_, _ = fmt.Fprintf(ctx.stderr(), "Kinetic Bridge: numeric `range` loops with float/int math may emit a Roma4D kernel in `r4d --explain`. Dynamic calls, attributes, subscripts, imports inside the loop block lifting. Set R4D_KINETIC_TRY_COMPILE=1 to trial-compile the generated kernel (temporal abort vs predicted CPython budget).\n")
+	case strings.Contains(low, "gguf") || strings.Contains(low, "cognitive") || strings.Contains(low, "llm"):
+		_, _ = fmt.Fprintf(ctx.stderr(), "Phase 3 cognitive: configure roma4d.toml [llm] model_path to a local GGUF + install llama-cpp-python. `r4d --explain` on .py runs GGUF on blocked Kinetic loops. R4D_COGNITIVE=0 disables; inference is bounded by a Z-axis (time) budget vs predicted CPython cost.\n")
 	case reGuide.MatchString(low):
 		_, _ = fmt.Fprintf(ctx.stderr(), "Authoritative reference: docs/Roma4D_Guide.md (repo root). Start with Mental model + §27 LLM hard rules.\n")
 	case strings.Contains(low, "llm") || strings.Contains(low, "gpt") || strings.Contains(low, "claude"):
@@ -420,7 +424,7 @@ func answerInteractive(ctx *FailureContext, low, original string) {
 	case strings.Contains(low, "strict"):
 		_, _ = fmt.Fprintf(ctx.stderr(), "Forgiving (default): rich Expert + this session. Strict: raw compiler output only — use in CI (`r4d --strict ...`).\n")
 	default:
-		_, _ = fmt.Fprintf(ctx.stderr(), "Try: why | zig | pyqt | guide | llm | strict | help | quit\n")
+		_, _ = fmt.Fprintf(ctx.stderr(), "Try: why | zig | pyqt | guide | llm | gguf | kinetic | strict | help | quit\n")
 	}
 }
 
