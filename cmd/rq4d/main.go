@@ -26,7 +26,8 @@ func main() {
 		hx0      = flag.Float64("hx", 0.15, "uniform on-site X coefficient")
 		measure  = flag.Bool("measure", false, "after evolution, run destructive measurement on site 0")
 		collapse = flag.Bool("collapse", true, "when measuring, collapse state (destructive)")
-		backend  = flag.String("backend", "cpu", "execution backend (cpu only; gpu reserved)")
+		backend  = flag.String("backend", "meanfield", "quantum backend: meanfield | tn | cpu (cpu=meanfield)")
+		chi      = flag.Int("chi", 1, "bond dimension χ for --backend=tn (1≈product; 2–32 entanglement)")
 	)
 	flag.Parse()
 	if *lx < 1 || *ly < 1 || *lz < 1 {
@@ -37,15 +38,22 @@ func main() {
 		fmt.Fprintln(os.Stderr, "dim must be 2, 4, or 8")
 		os.Exit(2)
 	}
-	if *backend != "cpu" {
-		fmt.Fprintf(os.Stderr, "backend %q not implemented (only cpu)\n", *backend)
+	if *backend != "meanfield" && *backend != "tn" && *backend != "cpu" {
+		fmt.Fprintf(os.Stderr, "backend must be meanfield, tn, or cpu (got %q)\n", *backend)
+		os.Exit(2)
+	}
+	if *chi < 1 || *chi > quantum.MaxChiCap {
+		fmt.Fprintf(os.Stderr, "chi must be in [1,%d]\n", quantum.MaxChiCap)
 		os.Exit(2)
 	}
 
 	n := int64(*lx) * int64(*ly) * int64(*lz)
 	d := int64(*dim)
-	mem := 2 * n * d * 2 * 8 // two buffers, re+im float64
-	fmt.Printf("nodes=%d dim=%d memory_est_two_buffers=%d_B\n", n, *dim, mem)
+	mem := 2 * n * d * 2 * 8 // two ψ buffers (re+im float64)
+	if *backend == "tn" {
+		mem += 2 * n * d * d * 2 * 8 // two ρ buffers per site (Hermitian d×d, re+im)
+	}
+	fmt.Printf("nodes=%d dim=%d backend=%s chi=%d memory_est_B=%d\n", n, *dim, *backend, *chi, mem)
 
 	w := *workers
 	if w <= 0 {
@@ -53,6 +61,7 @@ func main() {
 	}
 
 	S := quantum.NewSimulator(*lx, *ly, *lz, *dim, w)
+	S.SetQuantumBackend(*backend, *chi)
 	S.Dt = *dt
 	S.JBond = *jbond
 	S.SetUniformFields(*hz0, *hx0)
@@ -60,6 +69,10 @@ func main() {
 
 	S.InitProductComputational()
 	S.NormalizeGlobal(S.ReA, S.ImA)
+	if S.Backend == quantum.BackendTN {
+		S.SyncAllRhoFromPsi(S.ReA, S.ImA)
+		copy(S.RhoB, S.RhoA)
+	}
 
 	n0 := S.GlobalNorm2(S.ReA, S.ImA)
 	for s := 0; s < *steps; s++ {

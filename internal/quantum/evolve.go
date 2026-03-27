@@ -6,10 +6,21 @@ import (
 	"sync"
 )
 
-// Step runs one first-order Trotter timestep: local Strang layers, then six bond partitions
-// (x±, y±, z± split into even/odd plane parities). readBuf/writeBuf alternate: starts reading
-// from A and ends with final state in writeBuf; caller swaps A/B if needed.
+// Step runs one Trotter timestep. Mean-field path is unchanged from legacy behavior.
+// TN path with χ>1 applies truncated Schmidt bonds and maintains ρ on each site.
 func (S *Simulator) Step() {
+	if S.isTNMultBond() {
+		S.stepTNMulti()
+		return
+	}
+	S.stepMeanField()
+	if S.Backend == BackendTN && S.RhoA != nil {
+		S.SyncAllRhoFromPsi(S.ReA, S.ImA)
+		copy(S.RhoB, S.RhoA)
+	}
+}
+
+func (S *Simulator) stepMeanField() {
 	w := S.Workers
 	if w <= 0 {
 		w = runtime.GOMAXPROCS(0)
@@ -17,29 +28,66 @@ func (S *Simulator) Step() {
 	if w < 1 {
 		w = 1
 	}
-
 	readRe, readIm := S.ReA, S.ImA
 	writeRe, writeIm := S.ReB, S.ImB
-
 	S.applyLocalStrangParallel(readRe, readIm, writeRe, writeIm, w)
 	readRe, readIm, writeRe, writeIm = writeRe, writeIm, readRe, readIm
-
 	S.evolveBondsX(readRe, readIm, writeRe, writeIm, true, w)
 	readRe, readIm, writeRe, writeIm = writeRe, writeIm, readRe, readIm
 	S.evolveBondsX(readRe, readIm, writeRe, writeIm, false, w)
 	readRe, readIm, writeRe, writeIm = writeRe, writeIm, readRe, readIm
-
 	S.evolveBondsY(readRe, readIm, writeRe, writeIm, true, w)
 	readRe, readIm, writeRe, writeIm = writeRe, writeIm, readRe, readIm
 	S.evolveBondsY(readRe, readIm, writeRe, writeIm, false, w)
 	readRe, readIm, writeRe, writeIm = writeRe, writeIm, readRe, readIm
-
 	S.evolveBondsZ(readRe, readIm, writeRe, writeIm, true, w)
 	readRe, readIm, writeRe, writeIm = writeRe, writeIm, readRe, readIm
 	S.evolveBondsZ(readRe, readIm, writeRe, writeIm, false, w)
-
-	// Final result in (readRe, readIm) after last bond wrote there — swap pointers into A/B.
 	S.ReA, S.ImA, S.ReB, S.ImB = readRe, readIm, writeRe, writeIm
+}
+
+func (S *Simulator) stepTNMulti() {
+	w := S.Workers
+	if w <= 0 {
+		w = runtime.GOMAXPROCS(0)
+	}
+	if w < 1 {
+		w = 1
+	}
+	S.rhoStepRead, S.rhoStepWrite = S.RhoA, S.RhoB
+	readRe, readIm := S.ReA, S.ImA
+	writeRe, writeIm := S.ReB, S.ImB
+	S.applyLocalStrangParallel(readRe, readIm, writeRe, writeIm, w)
+	S.applyLocalStrangRhoParallel(S.rhoStepRead, S.rhoStepWrite, w)
+	readRe, readIm, writeRe, writeIm = writeRe, writeIm, readRe, readIm
+	S.rhoStepRead, S.rhoStepWrite = S.rhoStepWrite, S.rhoStepRead
+
+	S.evolveBondsX(readRe, readIm, writeRe, writeIm, true, w)
+	readRe, readIm, writeRe, writeIm = writeRe, writeIm, readRe, readIm
+	S.rhoStepRead, S.rhoStepWrite = S.rhoStepWrite, S.rhoStepRead
+	S.evolveBondsX(readRe, readIm, writeRe, writeIm, false, w)
+	readRe, readIm, writeRe, writeIm = writeRe, writeIm, readRe, readIm
+	S.rhoStepRead, S.rhoStepWrite = S.rhoStepWrite, S.rhoStepRead
+	S.evolveBondsY(readRe, readIm, writeRe, writeIm, true, w)
+	readRe, readIm, writeRe, writeIm = writeRe, writeIm, readRe, readIm
+	S.rhoStepRead, S.rhoStepWrite = S.rhoStepWrite, S.rhoStepRead
+	S.evolveBondsY(readRe, readIm, writeRe, writeIm, false, w)
+	readRe, readIm, writeRe, writeIm = writeRe, writeIm, readRe, readIm
+	S.rhoStepRead, S.rhoStepWrite = S.rhoStepWrite, S.rhoStepRead
+	S.evolveBondsZ(readRe, readIm, writeRe, writeIm, true, w)
+	readRe, readIm, writeRe, writeIm = writeRe, writeIm, readRe, readIm
+	S.rhoStepRead, S.rhoStepWrite = S.rhoStepWrite, S.rhoStepRead
+	S.evolveBondsZ(readRe, readIm, writeRe, writeIm, false, w)
+	readRe, readIm, writeRe, writeIm = writeRe, writeIm, readRe, readIm
+	S.rhoStepRead, S.rhoStepWrite = S.rhoStepWrite, S.rhoStepRead
+
+	S.ReA, S.ImA, S.ReB, S.ImB = readRe, readIm, writeRe, writeIm
+	S.RhoA, S.RhoB = S.rhoStepRead, S.rhoStepWrite
+}
+
+func (S *Simulator) copyRho(src, dst []float64) {
+	n := S.N * S.Dim * S.Dim * 2
+	copy(dst[:n], src[:n])
 }
 
 func (S *Simulator) applyLocalStrangParallel(srcRe, srcIm, dstRe, dstIm []float64, workers int) {
@@ -114,6 +162,9 @@ func applyPauliXLayer(re, im []float64, base, d, k int, angle float64) {
 
 func (S *Simulator) evolveBondsX(srcRe, srcIm, dstRe, dstIm []float64, ixEven bool, workers int) {
 	S.copyState(srcRe, srcIm, dstRe, dstIm)
+	if S.isTNMultBond() {
+		S.copyRho(S.rhoStepRead, S.rhoStepWrite)
+	}
 	lx, ly, lz := S.Lx, S.Ly, S.Lz
 	var wg sync.WaitGroup
 	chunk := (lz + workers - 1) / workers
@@ -129,8 +180,6 @@ func (S *Simulator) evolveBondsX(srcRe, srcIm, dstRe, dstIm []float64, ixEven bo
 		wg.Add(1)
 		go func(za, zb int) {
 			defer wg.Done()
-			wid := 0 // slice not passed; use stack-only scratch per edge
-			_ = wid
 			d := S.Dim
 			d2 := d * d
 			var etaRe, etaIm [maxBondTensor]float64
@@ -144,10 +193,15 @@ func (S *Simulator) evolveBondsX(srcRe, srcIm, dstRe, dstIm []float64, ixEven bo
 						}
 						i := S.IdxNode(ix, iy, iz)
 						j := S.IdxNode(ix+1, iy, iz)
-						S.bondUpdatePair(srcRe, srcIm, dstRe, dstIm, i, j,
-							etaRe[:d2], etaIm[:d2],
-							uR[:d], uI[:d], vR[:d], vI[:d],
-							t1R[:d], t1I[:d], t2R[:d], t2I[:d])
+						eIdx := S.EdgeIndexX(ix, iy, iz)
+						if S.isTNMultBond() {
+							S.bondUpdatePairTN(srcRe, srcIm, dstRe, dstIm, S.rhoStepWrite, i, j, eIdx, etaRe[:d2], etaIm[:d2])
+						} else {
+							S.bondUpdatePair(srcRe, srcIm, dstRe, dstIm, i, j,
+								etaRe[:d2], etaIm[:d2],
+								uR[:d], uI[:d], vR[:d], vI[:d],
+								t1R[:d], t1I[:d], t2R[:d], t2I[:d])
+						}
 					}
 				}
 			}
@@ -156,11 +210,13 @@ func (S *Simulator) evolveBondsX(srcRe, srcIm, dstRe, dstIm []float64, ixEven bo
 	wg.Wait()
 }
 
-const maxDim = 8
 const maxBondTensor = 64
 
 func (S *Simulator) evolveBondsY(srcRe, srcIm, dstRe, dstIm []float64, iyEven bool, workers int) {
 	S.copyState(srcRe, srcIm, dstRe, dstIm)
+	if S.isTNMultBond() {
+		S.copyRho(S.rhoStepRead, S.rhoStepWrite)
+	}
 	lx, ly, lz := S.Lx, S.Ly, S.Lz
 	var wg sync.WaitGroup
 	chunk := (lz + workers - 1) / workers
@@ -189,10 +245,15 @@ func (S *Simulator) evolveBondsY(srcRe, srcIm, dstRe, dstIm []float64, iyEven bo
 						}
 						i := S.IdxNode(ix, iy, iz)
 						j := S.IdxNode(ix, iy+1, iz)
-						S.bondUpdatePair(srcRe, srcIm, dstRe, dstIm, i, j,
-							etaRe[:d2], etaIm[:d2],
-							uR[:d], uI[:d], vR[:d], vI[:d],
-							t1R[:d], t1I[:d], t2R[:d], t2I[:d])
+						eIdx := S.EdgeIndexY(ix, iy, iz)
+						if S.isTNMultBond() {
+							S.bondUpdatePairTN(srcRe, srcIm, dstRe, dstIm, S.rhoStepWrite, i, j, eIdx, etaRe[:d2], etaIm[:d2])
+						} else {
+							S.bondUpdatePair(srcRe, srcIm, dstRe, dstIm, i, j,
+								etaRe[:d2], etaIm[:d2],
+								uR[:d], uI[:d], vR[:d], vI[:d],
+								t1R[:d], t1I[:d], t2R[:d], t2I[:d])
+						}
 					}
 				}
 			}
@@ -203,6 +264,9 @@ func (S *Simulator) evolveBondsY(srcRe, srcIm, dstRe, dstIm []float64, iyEven bo
 
 func (S *Simulator) evolveBondsZ(srcRe, srcIm, dstRe, dstIm []float64, izEven bool, workers int) {
 	S.copyState(srcRe, srcIm, dstRe, dstIm)
+	if S.isTNMultBond() {
+		S.copyRho(S.rhoStepRead, S.rhoStepWrite)
+	}
 	lx, ly, lz := S.Lx, S.Ly, S.Lz
 	var wg sync.WaitGroup
 	chunk := (ly + workers - 1) / workers
@@ -231,10 +295,15 @@ func (S *Simulator) evolveBondsZ(srcRe, srcIm, dstRe, dstIm []float64, izEven bo
 						}
 						i := S.IdxNode(ix, iy, iz)
 						j := S.IdxNode(ix, iy, iz+1)
-						S.bondUpdatePair(srcRe, srcIm, dstRe, dstIm, i, j,
-							etaRe[:d2], etaIm[:d2],
-							uR[:d], uI[:d], vR[:d], vI[:d],
-							t1R[:d], t1I[:d], t2R[:d], t2I[:d])
+						eIdx := S.EdgeIndexZ(ix, iy, iz)
+						if S.isTNMultBond() {
+							S.bondUpdatePairTN(srcRe, srcIm, dstRe, dstIm, S.rhoStepWrite, i, j, eIdx, etaRe[:d2], etaIm[:d2])
+						} else {
+							S.bondUpdatePair(srcRe, srcIm, dstRe, dstIm, i, j,
+								etaRe[:d2], etaIm[:d2],
+								uR[:d], uI[:d], vR[:d], vI[:d],
+								t1R[:d], t1I[:d], t2R[:d], t2I[:d])
+						}
 					}
 				}
 			}
@@ -298,6 +367,66 @@ func (S *Simulator) bondUpdatePair(srcRe, srcIm, dstRe, dstIm []float64, si, sj 
 			dstIm[bj+a] *= m
 		}
 	}
+}
+
+func (S *Simulator) bondUpdatePairTN(srcRe, srcIm, dstRe, dstIm []float64, dstRho []float64, si, sj, edgeIdx int, etaRe, etaIm []float64) {
+	d := S.Dim
+	bi := si * d
+	bj := sj * d
+	for a := 0; a < d; a++ {
+		for b := 0; b < d; b++ {
+			idx := a*d + b
+			ar, ai := srcRe[bi+a], srcIm[bi+a]
+			br, bim := srcRe[bj+b], srcIm[bj+b]
+			etaRe[idx] = ar*br - ai*bim
+			etaIm[idx] = ar*bim + ai*br
+		}
+	}
+	theta := -S.Dt * S.JBond
+	for k := 0; k < S.NQ; k++ {
+		applyXXOnBondTensor(etaRe, etaIm, d, k, theta)
+	}
+	scaleEta(etaRe, etaIm, d)
+
+	chiCap := S.Chi
+	if chiCap > d {
+		chiCap = d
+	}
+	var gRe, gIm, workRe, workIm [maxBondTensor]float64
+	var vRe, vIm [maxDim * maxDim]float64
+	var uRe, uIm [maxDim * maxDim]float64
+	var eval [maxDim]float64
+	var tmpVre, tmpVim [maxDim]float64
+	var sigma [MaxChiCap]float64
+
+	chiEff := svdTruncatedFromM(etaRe, etaIm, d, chiCap,
+		gRe[:d*d], gIm[:d*d], workRe[:d*d], workIm[:d*d],
+		vRe[:d*d], vIm[:d*d], eval[:d], tmpVre[:d], tmpVim[:d],
+		uRe[:d*d], uIm[:d*d], sigma[:])
+
+	b := &S.Bonds[edgeIdx]
+	b.clear()
+	if chiEff < 1 {
+		return
+	}
+	b.Chi = chiEff
+	for k := 0; k < chiEff; k++ {
+		b.SingularValues[k] = sigma[k]
+		for a := 0; a < d; a++ {
+			b.LeftRe[a*d+k] = uRe[a*d+k]
+			b.LeftIm[a*d+k] = uIm[a*d+k]
+			b.RightRe[a*d+k] = vRe[a*d+k]
+			b.RightIm[a*d+k] = vIm[a*d+k]
+		}
+	}
+
+	lr, li := rhoPtrFlat(dstRho, si, d)
+	rr, ri := rhoPtrFlat(dstRho, sj, d)
+	rhoHermitianFromSchmidt(d, chiEff, sigma[:chiEff], uRe[:], uIm[:], lr, li)
+	rhoHermitianFromSchmidt(d, chiEff, sigma[:chiEff], vRe[:], vIm[:], rr, ri)
+
+	psiFromRhoIntoSite(dstRho, si, d, dstRe, dstIm)
+	psiFromRhoIntoSite(dstRho, sj, d, dstRe, dstIm)
 }
 
 func siteL2Sq(re, im []float64, base, d int) float64 {

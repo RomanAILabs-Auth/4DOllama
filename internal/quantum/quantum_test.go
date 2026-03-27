@@ -86,6 +86,61 @@ func TestMeasureProbabilities(t *testing.T) {
 	}
 }
 
+func TestTNChi1MatchesMeanFieldPsiEvolution(t *testing.T) {
+	init := func(S *Simulator) {
+		S.Dt = 0.04
+		S.JBond = 0.05
+		S.SetUniformFields(0.07, 0.06)
+		for i := range S.ReA {
+			S.ReA[i] = 0.01 * float64(i%7)
+			S.ImA[i] = 0.02 * float64((i+3)%5)
+		}
+		S.NormalizeGlobal(S.ReA, S.ImA)
+	}
+	mf := NewSimulator(3, 3, 3, 2, 2)
+	init(mf)
+	tn := NewSimulator(3, 3, 3, 2, 2)
+	tn.SetQuantumBackend(BackendTN, 1)
+	init(tn)
+	tn.InitRhoComputational()
+	tn.SyncAllRhoFromPsi(tn.ReA, tn.ImA)
+	copy(tn.RhoB, tn.RhoA)
+
+	for i := 0; i < 4; i++ {
+		mf.Step()
+		tn.Step()
+	}
+	if math.Abs(mf.GlobalNorm2(mf.ReA, mf.ImA)-tn.GlobalNorm2(tn.ReA, tn.ImA)) > 1e-8 {
+		t.Fatalf("psi global norm mismatch")
+	}
+	if math.Abs(tn.GlobalTraceRho()-float64(tn.N)) > 1e-2 {
+		t.Fatalf("want Tr rho sum ~ N, got %g", tn.GlobalTraceRho())
+	}
+}
+
+func TestTNMultDeterminismWorkers(t *testing.T) {
+	run := func(workers int) [32]byte {
+		S := NewSimulator(3, 3, 3, 2, workers)
+		S.SetQuantumBackend(BackendTN, 2)
+		S.Dt = 0.03
+		S.JBond = 0.04
+		S.SetUniformFields(0.05, 0.05)
+		S.InitProductComputational()
+		S.NormalizeGlobal(S.ReA, S.ImA)
+		S.SyncAllRhoFromPsi(S.ReA, S.ImA)
+		copy(S.RhoB, S.RhoA)
+		for i := 0; i < 3; i++ {
+			S.Step()
+		}
+		return S.StateHashSHA256()
+	}
+	a := run(1)
+	b := run(4)
+	if a != b {
+		t.Fatalf("TN χ>1 hash mismatch across workers")
+	}
+}
+
 func TestMeasureDeterministicWithSeed(t *testing.T) {
 	S := NewSimulator(1, 1, 1, 2, 1)
 	S.ReA[0] = 0.6
