@@ -1,0 +1,30 @@
+# speed_benchmark.rq4d
+# Copyright RomanAILabs - Daniel Harding
+
+# Allocate a massive manifold
+ALLOC 100
+
+# Perform a high-speed parallel fold across all 100 memory planes
+H 0
+H 1
+H 2
+H 3
+H 4
+H 5
+H 6
+H 7
+H 8
+H 9
+H 10
+H 11
+H 12
+H 13
+H 14
+H 15
+H 16
+H 17
+H 18
+H 19
+# ... (The engine batches these as parallel goroutine sweeps)
+
+MEASURE

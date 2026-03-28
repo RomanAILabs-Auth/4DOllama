@@ -10,9 +10,10 @@ import (
 
 // Modelfile captures Ollama-style directives we need for 4dollama create (FROM, PARAMETER, optional TEMPLATE).
 type Modelfile struct {
-	FromPaths  []string
-	Parameters map[string]string
-	Template   string
+	FromPaths      []string
+	TokenizerFrom  string // optional GGUF path for tokenizer.ggml.tokens when weights are .4dai
+	Parameters     map[string]string
+	Template       string
 }
 
 // ParseModelfile reads Ollama Modelfile syntax (subset): FROM, PARAMETER, TEMPLATE blocks.
@@ -62,6 +63,14 @@ func ParseModelfileString(src string) Modelfile {
 			p = strings.Trim(p, `"'`)
 			if p != "" {
 				m.FromPaths = append(m.FromPaths, p)
+			}
+			continue
+		}
+		if strings.HasPrefix(upper, "TOKENIZER_FROM ") {
+			p := strings.TrimSpace(line[len("TOKENIZER_FROM "):])
+			p = strings.Trim(p, `"'`)
+			if p != "" {
+				m.TokenizerFrom = p
 			}
 			continue
 		}

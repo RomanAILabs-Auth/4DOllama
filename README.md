@@ -55,12 +55,13 @@ What makes it different is the **native 4D inference spine**: quaternion-style r
 
 | Capability | 4DOllama |
 |------------|----------|
-| **Ollama CLI verbs** | `serve`, `run`, `pull`, `list`, `ps`, `show`, `cp`, `rm`, `version`, … |
+| **Ollama CLI verbs** | `serve`, `run`, `chat`, `pull`, `list`, `ps`, `show`, `cp`, `rm`, `version`, … |
 | **Streaming** | ✅ NDJSON on `/api/chat` & `/api/generate` with flush-per-chunk |
 | **Interactive REPL** | ✅ Plain `>>> ` line mode (Ollama-style; no full-screen bubble TUI) |
 | **GGUF** | ✅ Pull, resolve, optional reuse of `~/.ollama/models` blobs |
 | **Default port** | **13377** — runs **beside** Ollama on **11434** |
-| **Hybrid mode** | ✅ Forward to stock Ollama via `FOURD_INFERENCE=ollama` + `OLLAMA_HOST` |
+| **Default inference** | ✅ Forwards to **local Ollama** at `http://127.0.0.1:11434` for llama.cpp text (`FOURD_INFERENCE=stub` to use native decode only) |
+| **Silent RQ4D** | ✅ Quantum lattice steps + Cl(4,0) lattice coupling on every request (no CLI flag) |
 | **OpenAI-shaped routes** | ✅ `/v1/chat/completions`, `/v1/completions` (subset) |
 | **Health & metrics** | ✅ `/healthz`, `/livez`, `/metrics` |
 | **Docker** | ✅ `Dockerfile` + `docker-compose.yml` in repo |
@@ -225,10 +226,18 @@ Reload your shell (`source ~/.profile` or open a new terminal). Ensure `~/.local
 # Terminal A — start the API (default http://127.0.0.1:13377)
 4dollama serve
 
-# Terminal B — pull a model, then chat (streaming REPL)
-4dollama pull qwen2.5
-4dollama run qwen2.5
+# Terminal B — ensure stock Ollama is running (llama.cpp on :11434), then:
+4dollama pull phi3
+4dollama run phi3
+# Same as Ollama’s chat entrypoint:
+4dollama chat phi3
 ```
+
+### RomanAI and natural chat
+
+**Replies match what you expect from Ollama** because completions are **forwarded to your local Ollama** by default (`OLLAMA_HOST`, default `http://127.0.0.1:11434`). Keep the **same model names** in both tools (`phi3`, `qwen2.5`, …). The default **RomanAI** system prompt keeps answers in **clear, friendly English** without surfacing geometry or stack jargon. **RQ4D + Cl(4,0) lattice work runs in-process on every request** and does not change the transcript.
+
+Engine diagnostics stay **off the conversation** unless **`4dollama serve --verbose`** or **`FOURD_LOG_LEVEL=debug`**. To use **native stub decode** only (no Ollama), set **`FOURD_INFERENCE=stub`**. To skip the Ollama pre-pass when both are configured, set **`FOURD_4DAI_OLLAMA=0`**. **`FOURD_ALLOW_STUB_GARBAGE=1`** enables raw stub sampling (not recommended for chat).
 
 **One-liner health check:**
 
@@ -294,10 +303,12 @@ docker compose up --build
 |-------|-----|
 | **Run beside Ollama** | Default `FOURD_PORT=13377`; keep Ollama on `11434`. |
 | **Bind Ollama’s port** | Stop Ollama; `4dollama serve -h 127.0.0.1 -p 11434`. |
-| **Hybrid inference** | `FOURD_INFERENCE=ollama` + `OLLAMA_HOST=http://127.0.0.1:11434`. |
+| **Hybrid inference** | Default: `FOURD_INFERENCE=ollama` + `OLLAMA_HOST=http://127.0.0.1:11434`. |
 | **Lattice coupling strength** | `FOURD_LATTICE_KAPPA` (see source / docs). |
 | **Smoother streaming UX** | `FOURD_STREAM_CHUNK_MS` (milliseconds between NDJSON chunks). |
 | **Verbose engine logs** | `4dollama serve -verbose` or `FOURD_LOG_LEVEL=debug`. |
+| **RomanAI chat tone** | Default system prompt is natural English; technical appendix only with `-verbose` / debug. |
+| **Prefer Ollama for text** | `FOURD_4DAI_OLLAMA` / `FOURD_TRY_OLLAMA_FIRST` (on when `OLLAMA_HOST` set). |
 
 <br/>
 
@@ -308,8 +319,11 @@ docker compose up --build
 | `FOURD_HOST` | `0.0.0.0` | Bind address |
 | `FOURD_PORT` | `13377` | HTTP port |
 | `FOURD_MODELS` | `~/.4dollama/models` | GGUF tree |
-| `FOURD_INFERENCE` | `stub` | Native path; `ollama` for hybrid |
-| `OLLAMA_HOST` | _(empty)_ | Upstream for hybrid / benchmarks |
+| `FOURD_INFERENCE` | `ollama` | Upstream llama.cpp via Ollama; `stub` for native decode only |
+| `FOURD_4DAI_OLLAMA` / `FOURD_TRY_OLLAMA_FIRST` | on if `OLLAMA_HOST` non-empty | Try Ollama before stub when inference is stub |
+| `FOURD_4DAI_OLLAMA_MODEL` | _(unset)_ | Ollama model tag if it differs from the 4dollama name |
+| `FOURD_ALLOW_STUB_GARBAGE` | `0` | Set `1` to allow raw stub token streams (not for normal chat) |
+| `OLLAMA_HOST` | `http://127.0.0.1:11434` | Upstream Ollama API (set empty only if you use stub-only and avoid forward) |
 | `FOURD_SHARE_OLLAMA` | `true` | Reuse Ollama blobs when present |
 | `OLLAMA_MODELS` | `~/.ollama/models` | Ollama data root |
 | `FOURD_LOG_LEVEL` | `warn` | `debug` / `info` / `warn` / `error` |
@@ -357,7 +371,7 @@ More: **[docs/INSTALL_4DOLLAMA.md](docs/INSTALL_4DOLLAMA.md#common-problems)**.
 - [ ] Deeper **GPU** paths in `four_d_engine` (beyond scaffolding)
 - [ ] Expanded **OpenAI** compatibility matrix
 - [ ] **Signed** release binaries + SBOM
-- [ ] Tighter **RQ4D** executor integration options (optional backend)
+- [x] **RQ4D** quantum sidecar (`RQ4D/rq4dsidecar`) on every inference (silent)
 - [ ] Continued **Roma4D** ↔ **4DOllama** demo bridges
 
 *Roadmap items are aspirational until shipped in a tagged release.*

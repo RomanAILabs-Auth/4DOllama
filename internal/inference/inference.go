@@ -19,7 +19,6 @@ type Context struct {
 	ModelResolved bool
 	ModelPath     string
 	InspectJSON   string
-	FourDMode     bool
 	Eng           engine.Engine
 	FourDDemo     []float32 // quaternion demo output from engine.Compute4DDemo
 	LiftedWeights []float32 // GGUF sample after 4D lift (native)
@@ -28,7 +27,11 @@ type Context struct {
 	// SpacetimeAttention is causal 4D quaternion attention over RoPEEmbedding (same seq).
 	SpacetimeAttention []float32
 	MatmulScore        float32 // attention_out · lifted weights (when attention ok), else RoPE · lifted
-	WeightsFrom4DGGUF  bool  // lifted tensor cache loaded from ~/.ollama/models/blobs/<model>.4dgguf
+	WeightsFrom4DGGUF  bool    // lifted tensor cache loaded from ~/.ollama/models/blobs/<model>.4dgguf
+	// ShardPaths lists native .4dai blob paths when the model is registered via .multi4dai (optional).
+	ShardPaths []string
+	// TokenizerGGUF is optional: read tokenizer.ggml.tokens from this GGUF for .4dai stub decode.
+	TokenizerGGUF string
 }
 
 // Provider implements completion for a single backend strategy.

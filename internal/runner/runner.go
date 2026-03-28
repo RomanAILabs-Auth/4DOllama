@@ -4,12 +4,16 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"os"
+	"path/filepath"
 	"strings"
+	"sync"
 
 	"github.com/4dollama/4dollama/internal/engine"
 	"github.com/4dollama/4dollama/internal/inference"
 	"github.com/4dollama/4dollama/internal/models"
 	"github.com/4dollama/4dollama/internal/ollama"
+	"github.com/4dollama/4dollama/internal/rq4dbridge"
 )
 
 const demoPromptMaxRunes = 256
@@ -28,24 +32,91 @@ func promptRunesToFloats(prompt string) []float32 {
 	return out
 }
 
+// ServiceOptions configures optional Ollama bridging for .4dai weights (real llama.cpp vs native stub).
+type ServiceOptions struct {
+	OllamaHost          string
+	Forward4DAIToOllama bool
+}
+
 // Service orchestrates model resolution, GGUF inspect, and the inference provider.
 type Service struct {
-	Eng      engine.Engine
-	Registry *models.Registry
-	Log      *slog.Logger
-	Infer    inference.Provider
+	Eng                 engine.Engine
+	Registry            *models.Registry
+	Log                 *slog.Logger
+	Infer               inference.Provider
+	ollamaHost          string
+	forward4DAIToOllama bool
+	forwardFallbackOnce sync.Once
 }
 
 // NewService wires the runner. If inf is nil, Stub is used.
-func NewService(eng engine.Engine, reg *models.Registry, log *slog.Logger, inf inference.Provider) *Service {
+func NewService(eng engine.Engine, reg *models.Registry, log *slog.Logger, inf inference.Provider, opts ServiceOptions) *Service {
 	if inf == nil {
 		inf = inference.Stub{}
 	}
-	return &Service{Eng: eng, Registry: reg, Log: log, Infer: inf}
+	host := strings.TrimSuffix(strings.TrimSpace(opts.OllamaHost), "/")
+	return &Service{
+		Eng:                 eng,
+		Registry:            reg,
+		Log:                 log,
+		Infer:               inf,
+		ollamaHost:          host,
+		forward4DAIToOllama: opts.Forward4DAIToOllama && host != "",
+	}
+}
+
+func is4DaiWeights(path string) bool {
+	ext := strings.ToLower(filepath.Ext(path))
+	return ext == ".4dai" || ext == ".multi4dai"
+}
+
+func (s *Service) ollamaForwardBeforeStub(ic inference.Context) (inference.OllamaForward, bool) {
+	if !s.forward4DAIToOllama || s.ollamaHost == "" || s.Infer.Name() != "stub" {
+		return inference.OllamaForward{}, false
+	}
+	if !ic.ModelResolved || strings.TrimSpace(ic.ModelPath) == "" {
+		return inference.OllamaForward{}, false
+	}
+	return inference.OllamaForward{BaseURL: s.ollamaHost}, true
+}
+
+func (s *Service) logForwardFallback(err error) {
+	s.forwardFallbackOnce.Do(func() {
+		if s.Log != nil {
+			s.Log.Debug("ollama forward before stub failed; falling back",
+				slog.Any("err", err))
+		}
+	})
+}
+
+// stubCompletionUnavailable is true when the native stub cannot produce human-quality text.
+func (s *Service) stubCompletionUnavailable(ic inference.Context) bool {
+	if s.Infer.Name() != "stub" {
+		return false
+	}
+	if strings.TrimSpace(os.Getenv("FOURD_ALLOW_STUB_GARBAGE")) == "1" {
+		return false
+	}
+	if is4DaiWeights(ic.ModelPath) {
+		return true
+	}
+	// Full-vocab stub sampling is not language modeling; prefer Ollama upstream or a friendly fallback.
+	if strings.EqualFold(filepath.Ext(ic.ModelPath), ".gguf") {
+		return true
+	}
+	return false
+}
+
+// ollamaUpstreamModel returns FOURD_4DAI_OLLAMA_MODEL when set, else the 4dollama request name.
+func ollamaUpstreamModel(reqModel string) string {
+	if v := strings.TrimSpace(os.Getenv("FOURD_4DAI_OLLAMA_MODEL")); v != "" {
+		return v
+	}
+	return reqModel
 }
 
 // buildInferContext resolves the model and gathers tensors / engine state shared by Generate and streaming.
-func (s *Service) buildInferContext(ctx context.Context, req *ollama.GenerateRequest, fourDMode bool) (inference.Context, error) {
+func (s *Service) buildInferContext(ctx context.Context, req *ollama.GenerateRequest) (inference.Context, error) {
 	_ = ctx
 	req.Model = strings.TrimSpace(req.Model)
 	if req.Model == "" {
@@ -55,24 +126,27 @@ func (s *Service) buildInferContext(ctx context.Context, req *ollama.GenerateReq
 	entry, ok := s.Registry.Resolve(req.Model)
 	forward := s.Infer.Name() == "ollama-forward"
 	if !ok && !forward {
-		return inference.Context{}, fmt.Errorf("model not found: %q — run: 4dollama pull %s (GGUF into FOURD_MODELS); decoding uses native four_d_engine. Optional: FOURD_INFERENCE=ollama + OLLAMA_HOST for hybrid", req.Model, req.Model)
+		return inference.Context{}, fmt.Errorf("model not found: %q — try: 4dollama pull %s", req.Model, req.Model)
 	}
 
 	var inspectJSON, path string
 	if ok {
 		path = entry.Path
-		if b, err := s.Eng.InspectGGUF(entry.Path); err == nil {
-			inspectJSON = string(b)
-			if s.Log != nil {
-				s.Log.Debug("gguf inspect",
-					slog.String("model", req.Model),
-					slog.String("path", entry.Path),
-					slog.String("inference", s.Infer.Name()),
-					slog.String("backend", string(s.Eng.Info().Backend)),
-				)
+		isGGUF := strings.EqualFold(filepath.Ext(entry.Path), ".gguf")
+		if isGGUF {
+			if b, err := s.Eng.InspectGGUF(entry.Path); err == nil {
+				inspectJSON = string(b)
+				if s.Log != nil {
+					s.Log.Debug("gguf inspect",
+						slog.String("model", req.Model),
+						slog.String("path", entry.Path),
+						slog.String("inference", s.Infer.Name()),
+						slog.String("backend", string(s.Eng.Info().Backend)),
+					)
+				}
+			} else if s.Log != nil {
+				s.Log.Debug("gguf inspect failed", slog.String("path", entry.Path), slog.Any("err", err))
 			}
-		} else if s.Log != nil {
-			s.Log.Warn("gguf inspect failed", slog.String("path", entry.Path), slog.Any("err", err))
 		}
 	} else if forward && s.Log != nil {
 		s.Log.Debug("forwarding without local GGUF resolve", slog.String("model", req.Model))
@@ -89,7 +163,7 @@ func (s *Service) buildInferContext(ctx context.Context, req *ollama.GenerateReq
 		var derr error
 		fourDDemo, derr = s.Eng.Compute4DDemo(demoIn)
 		if derr != nil && s.Log != nil {
-			s.Log.Warn("Compute4DDemo", slog.Any("err", derr))
+			s.Log.Debug("Compute4DDemo", slog.Any("err", derr))
 		}
 	}
 	if len(fourDDemo) > 0 && s.Log != nil {
@@ -110,7 +184,7 @@ func (s *Service) buildInferContext(ctx context.Context, req *ollama.GenerateReq
 			from4DGGUF = true
 		}
 	}
-	if ok && path != "" && s.Eng != nil && len(lifted) == 0 {
+	if ok && path != "" && s.Eng != nil && len(lifted) == 0 && strings.EqualFold(filepath.Ext(path), ".gguf") {
 		if pc, err := s.Eng.GGUFParamCount(path); err == nil {
 			paramCount = pc
 		}
@@ -139,7 +213,7 @@ func (s *Service) buildInferContext(ctx context.Context, req *ollama.GenerateReq
 	if s.Eng != nil && len(demoIn) > 0 {
 		r, rerr := s.Eng.Rope4DSequence(demoIn)
 		if rerr != nil && s.Log != nil {
-			s.Log.Warn("Rope4DSequence", slog.Any("err", rerr))
+			s.Log.Debug("Rope4DSequence", slog.Any("err", rerr))
 		} else {
 			ropeEmb = r
 		}
@@ -155,7 +229,7 @@ func (s *Service) buildInferContext(ctx context.Context, req *ollama.GenerateReq
 		seqLen := len(ropeEmb) / 4
 		a, aerr := s.Eng.SpacetimeAttention4D(ropeEmb, ropeEmb, ropeEmb, seqLen)
 		if aerr != nil && s.Log != nil {
-			s.Log.Warn("SpacetimeAttention4D", slog.Any("err", aerr))
+			s.Log.Debug("SpacetimeAttention4D", slog.Any("err", aerr))
 		} else if len(a) > 0 {
 			attnOut = a
 		}
@@ -197,11 +271,18 @@ func (s *Service) buildInferContext(ctx context.Context, req *ollama.GenerateReq
 			slog.Int("lift_len", len(lifted)))
 	}
 
+	shards := entry.ShardPaths
+	if !ok {
+		shards = nil
+	}
+	tokGGUF := ""
+	if ok {
+		tokGGUF = entry.TokenizerGGUF
+	}
 	return inference.Context{
 		ModelResolved:      ok,
 		ModelPath:          path,
 		InspectJSON:        inspectJSON,
-		FourDMode:          fourDMode,
 		Eng:                s.Eng,
 		FourDDemo:          fourDDemo,
 		LiftedWeights:      lifted,
@@ -210,6 +291,8 @@ func (s *Service) buildInferContext(ctx context.Context, req *ollama.GenerateReq
 		SpacetimeAttention: attnOut,
 		MatmulScore:        matmul,
 		WeightsFrom4DGGUF:  from4DGGUF,
+		ShardPaths:         shards,
+		TokenizerGGUF:      tokGGUF,
 	}, nil
 }
 
@@ -239,12 +322,23 @@ func emitRuneDeltas(text string, emit func(string) error) error {
 }
 
 // Generate produces a completion via the configured inference provider.
-func (s *Service) Generate(ctx context.Context, req ollama.GenerateRequest, fourDMode bool) (ollama.GenerateResponse, error) {
-	ic, err := s.buildInferContext(ctx, &req, fourDMode)
+func (s *Service) Generate(ctx context.Context, req ollama.GenerateRequest) (ollama.GenerateResponse, error) {
+	ic, err := s.buildInferContext(ctx, &req)
 	if err != nil {
 		return ollama.GenerateResponse{}, err
 	}
+	rq4dbridge.SilentInferencePass(s.Eng, req.Prompt)
 	stubStreamLog(s, req.Prompt)
+	if of, ok := s.ollamaForwardBeforeStub(ic); ok {
+		text, ferr := of.Generate(ctx, inference.Context{}, ollamaUpstreamModel(req.Model), req.Prompt)
+		if ferr == nil {
+			return inference.ToResponse(req.Model, text), nil
+		}
+		s.logForwardFallback(ferr)
+	}
+	if s.stubCompletionUnavailable(ic) {
+		return inference.ToResponse(req.Model, RomanAIFriendlyFallback), nil
+	}
 	text, err := s.Infer.Generate(ctx, ic, req.Model, req.Prompt)
 	if err != nil {
 		return ollama.GenerateResponse{}, err
@@ -252,13 +346,13 @@ func (s *Service) Generate(ctx context.Context, req ollama.GenerateRequest, four
 	return inference.ToResponse(req.Model, text), nil
 }
 
-// StreamGenerate streams completion deltas; native stub and ollama-forward stream from the provider, others fall back to rune-chunking after Generate.
-func (s *Service) StreamGenerate(ctx context.Context, req ollama.GenerateRequest, fourDMode bool, emit func(string) error) error {
-	ic, err := s.buildInferContext(ctx, &req, fourDMode)
-	if err != nil {
-		return err
+func (s *Service) streamGenerateStub(ctx context.Context, ic inference.Context, req ollama.GenerateRequest, emit func(string) error) error {
+	if s.stubCompletionUnavailable(ic) {
+		if emit == nil {
+			return nil
+		}
+		return emit(RomanAIFriendlyFallback)
 	}
-	stubStreamLog(s, req.Prompt)
 	if sg, ok := s.Infer.(inferStreamer); ok {
 		return sg.GenerateStream(ctx, ic, req.Model, req.Prompt, emit)
 	}
@@ -269,9 +363,50 @@ func (s *Service) StreamGenerate(ctx context.Context, req ollama.GenerateRequest
 	return emitRuneDeltas(text, emit)
 }
 
+// StreamGenerate streams completion deltas; native stub and ollama-forward stream from the provider, others fall back to rune-chunking after Generate.
+func (s *Service) StreamGenerate(ctx context.Context, req ollama.GenerateRequest, emit func(string) error) error {
+	ic, err := s.buildInferContext(ctx, &req)
+	if err != nil {
+		return err
+	}
+	rq4dbridge.SilentInferencePass(s.Eng, req.Prompt)
+	stubStreamLog(s, req.Prompt)
+	if of, ok := s.ollamaForwardBeforeStub(ic); ok {
+		ferr := of.GenerateStream(ctx, inference.Context{}, ollamaUpstreamModel(req.Model), req.Prompt, emit)
+		if ferr == nil {
+			return nil
+		}
+		s.logForwardFallback(ferr)
+	}
+	return s.streamGenerateStub(ctx, ic, req, emit)
+}
+
+func chatTranscript(msgs []ollama.Message) string {
+	var b strings.Builder
+	for _, m := range msgs {
+		b.WriteString(m.Role)
+		b.WriteString(": ")
+		b.WriteString(m.Content)
+		b.WriteByte('\n')
+	}
+	return b.String()
+}
+
 // StreamChat folds chat messages into a prompt and streams the completion.
-func (s *Service) StreamChat(ctx context.Context, req ollama.ChatRequest, fourDMode bool, emit func(string) error) error {
-	msgs := dedupeConsecutiveUserMessages(ensureFourDSystemPrompt(req.Messages))
+func (s *Service) StreamChat(ctx context.Context, req ollama.ChatRequest, emit func(string) error) error {
+	msgs := dedupeConsecutiveUserMessages(ensureChatSystemPrompt(ctx, req.Messages, s.Log))
+	rq4dbridge.SilentInferencePass(s.Eng, chatTranscript(msgs))
+	ic, err := s.buildInferContext(ctx, &ollama.GenerateRequest{Model: req.Model, Prompt: ""})
+	if err != nil {
+		return err
+	}
+	if of, ok := s.ollamaForwardBeforeStub(ic); ok {
+		ferr := of.ChatStream(ctx, ollamaUpstreamModel(req.Model), msgs, emit)
+		if ferr == nil {
+			return nil
+		}
+		s.logForwardFallback(ferr)
+	}
 	var user strings.Builder
 	for _, m := range msgs {
 		user.WriteString(m.Role)
@@ -280,12 +415,29 @@ func (s *Service) StreamChat(ctx context.Context, req ollama.ChatRequest, fourDM
 		user.WriteString("\n")
 	}
 	gr := ollama.GenerateRequest{Model: req.Model, Prompt: user.String()}
-	return s.StreamGenerate(ctx, gr, fourDMode, emit)
+	ic2, err := s.buildInferContext(ctx, &gr)
+	if err != nil {
+		return err
+	}
+	stubStreamLog(s, gr.Prompt)
+	return s.streamGenerateStub(ctx, ic2, gr, emit)
 }
 
 // Chat maps chat messages to a single prompt and uses Generate.
-func (s *Service) Chat(ctx context.Context, req ollama.ChatRequest, fourDMode bool) (ollama.ChatResponse, error) {
-	msgs := dedupeConsecutiveUserMessages(ensureFourDSystemPrompt(req.Messages))
+func (s *Service) Chat(ctx context.Context, req ollama.ChatRequest) (ollama.ChatResponse, error) {
+	msgs := dedupeConsecutiveUserMessages(ensureChatSystemPrompt(ctx, req.Messages, s.Log))
+	ic, err := s.buildInferContext(ctx, &ollama.GenerateRequest{Model: req.Model, Prompt: ""})
+	if err != nil {
+		return ollama.ChatResponse{}, err
+	}
+	if of, ok := s.ollamaForwardBeforeStub(ic); ok {
+		rq4dbridge.SilentInferencePass(s.Eng, chatTranscript(msgs))
+		cr, ferr := of.Chat(ctx, ollamaUpstreamModel(req.Model), msgs)
+		if ferr == nil {
+			return cr, nil
+		}
+		s.logForwardFallback(ferr)
+	}
 	var user strings.Builder
 	for _, m := range msgs {
 		user.WriteString(m.Role)
@@ -293,7 +445,7 @@ func (s *Service) Chat(ctx context.Context, req ollama.ChatRequest, fourDMode bo
 		user.WriteString(m.Content)
 		user.WriteString("\n")
 	}
-	g, err := s.Generate(ctx, ollama.GenerateRequest{Model: req.Model, Prompt: user.String()}, fourDMode)
+	g, err := s.Generate(ctx, ollama.GenerateRequest{Model: req.Model, Prompt: user.String()})
 	if err != nil {
 		return ollama.ChatResponse{}, err
 	}

@@ -19,7 +19,7 @@ func TestHealthz(t *testing.T) {
 	dir := t.TempDir()
 	reg := models.NewRegistry(dir, "", false, log)
 	h := &Handler{
-		Run:     runner.NewService(engine.New(), reg, log, inference.Stub{}),
+		Run:     runner.NewService(engine.New(), reg, log, inference.Stub{}, runner.ServiceOptions{}),
 		Reg:     reg,
 		Log:     log,
 		Metrics: &Metrics{},

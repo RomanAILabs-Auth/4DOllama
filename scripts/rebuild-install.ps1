@@ -16,12 +16,10 @@ $destExe = Join-Path $destDir "4dollama.exe"
 
 if (-not $NoStopServe) {
     Get-CimInstance Win32_Process -Filter "Name = '4dollama.exe'" -ErrorAction SilentlyContinue | ForEach-Object {
-        if ($_.CommandLine -match '\bserve\b') {
-            Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue
-            Write-Host "Stopped 4dollama serve PID $($_.ProcessId)"
-        }
+        Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue
+        Write-Host "Stopped 4dollama PID $($_.ProcessId)"
     }
-    Start-Sleep -Milliseconds 500
+    Start-Sleep -Milliseconds 800
 }
 
 if (-not (Get-Command go -ErrorAction SilentlyContinue)) {

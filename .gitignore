@@ -29,3 +29,10 @@ README.md.bak
 # Local archive dumps (not part of source)
 /roma4d.zip
 /roma4d (2).zip
+
+# Large weight shards at repo root (see docs/ROMANAI_V2_SHARDS.md)
+/romanai.4dai
+/romanai_v2_part*.4dai
+
+# RQ4D local build artifacts
+RQ4D/*.exe

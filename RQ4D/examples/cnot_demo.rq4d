@@ -1,0 +1,5 @@
+# cnot_demo.rq4d — Phase 2 sample: |1⟩ control flips target (product-state model).
+ALLOC 2
+X 0
+CNOT 0 1
+MEASURE

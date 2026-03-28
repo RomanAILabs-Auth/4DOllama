@@ -21,18 +21,21 @@ import (
 )
 
 // Run boots the HTTP server until SIGINT/SIGTERM.
-func Run(ctx context.Context, cfg config.Config, log *slog.Logger, fourDMode bool) error {
+func Run(ctx context.Context, cfg config.Config, log *slog.Logger) error {
 	inf, err := inference.NewFromConfig(cfg)
 	if err != nil {
 		return err
 	}
 	eng := engine.New()
 	reg := models.NewRegistry(cfg.ModelsDir, cfg.OllamaModels, cfg.ShareOllamaBlobs, log)
-	svc := runner.NewService(eng, reg, log, inf)
+	svc := runner.NewService(eng, reg, log, inf, runner.ServiceOptions{
+		OllamaHost:          cfg.OllamaHost,
+		Forward4DAIToOllama: cfg.Forward4DAIToOllama,
+	})
 	met := &Metrics{}
 	chunkDelay := time.Duration(cfg.StreamChunkMs) * time.Millisecond
 	h := &Handler{
-		Run: svc, Reg: reg, Log: log, FourD: fourDMode, Metrics: met,
+		Run: svc, Reg: reg, Log: log, Metrics: met,
 		OllamaModels: cfg.OllamaModels, StreamChunkDelay: chunkDelay,
 	}
 

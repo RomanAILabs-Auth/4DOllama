@@ -10,7 +10,9 @@ import (
 	"strconv"
 	"sync"
 
+	"github.com/4dollama/4dollama/internal/ai4d"
 	"github.com/4dollama/4dollama/internal/fourd/coupling"
+	"github.com/4dollama/4dollama/internal/fourd/hodge"
 	"github.com/4dollama/4dollama/internal/fourd/lattice4"
 )
 
@@ -18,16 +20,17 @@ const inferLatticeDim = 16 // Q,K are 16×16 for Frobenius coupling (macro chunk
 
 // InferenceLattice couples token-stream attention geometry to a 4-torus field (w-axis aware injection).
 type InferenceLattice struct {
-	mu    sync.Mutex
-	cur   *lattice4.Grid
-	nxt   *lattice4.Grid
-	src   *lattice4.Grid
-	qFlat []float64
-	kFlat []float64
-	work  []float64
-	kappa float64
-	D     float64
-	dt    float64
+	mu           sync.Mutex
+	cur          *lattice4.Grid
+	nxt          *lattice4.Grid
+	src          *lattice4.Grid
+	hodgeScratch *lattice4.Grid
+	qFlat        []float64
+	kFlat        []float64
+	work         []float64
+	kappa        float64
+	D            float64
+	dt           float64
 }
 
 var (
@@ -53,15 +56,16 @@ func NewInferenceLattice() *InferenceLattice {
 	}
 	nx, ny, nz, nw := 10, 10, 10, 6
 	return &InferenceLattice{
-		cur:   lattice4.NewGrid(nx, ny, nz, nw),
-		nxt:   lattice4.NewGrid(nx, ny, nz, nw),
-		src:   lattice4.NewGrid(nx, ny, nz, nw),
-		qFlat: make([]float64, inferLatticeDim*inferLatticeDim),
-		kFlat: make([]float64, inferLatticeDim*inferLatticeDim),
-		work:  make([]float64, inferLatticeDim*inferLatticeDim),
-		kappa: kappa,
-		D:     0.014,
-		dt:    0.18,
+		cur:          lattice4.NewGrid(nx, ny, nz, nw),
+		nxt:          lattice4.NewGrid(nx, ny, nz, nw),
+		src:          lattice4.NewGrid(nx, ny, nz, nw),
+		hodgeScratch: lattice4.NewGrid(nx, ny, nz, nw),
+		qFlat:        make([]float64, inferLatticeDim*inferLatticeDim),
+		kFlat:        make([]float64, inferLatticeDim*inferLatticeDim),
+		work:         make([]float64, inferLatticeDim*inferLatticeDim),
+		kappa:        kappa,
+		D:            0.014,
+		dt:           0.18,
 	}
 }
 
@@ -86,8 +90,9 @@ func packRK(dst []float64, rope, attn []float32, dim int) {
 	}
 }
 
-// OnTokenStep runs one bidirectional coupling tick: QK gravity → heat step → lattice → logit bias.
+// OnTokenStep is the legacy lattice tick (macro QKᵀ Frobenius only). Prefer OnTokenStepRuntime4D for full runtime coupling.
 func (il *InferenceLattice) OnTokenStep(rope, attn, lifted []float32, step int) float64 {
+	_ = lifted
 	if il == nil {
 		return 0
 	}
@@ -110,8 +115,43 @@ func (il *InferenceLattice) OnTokenStep(rope, attn, lifted []float32, step int) 
 		cw = 0
 	}
 	b := coupling.LatticeToLogitBias(il.cur, cx, cy, cz, cw)
-	// strengthen coupling slightly with step depth (bounded)
 	return b * (1.0 + 0.02*math.Sqrt(float64(step+1)))
+}
+
+// OnTokenStepRuntime4D combines explicit ||QKᵀ||_F from the quaternion causal block, macro packed QK,
+// isoclinic rotor scaling, Hodge-style harmonic projection on the lattice, and reverse logit coupling.
+func (il *InferenceLattice) OnTokenStepRuntime4D(rope, attn, lifted []float32, step int) float64 {
+	_ = lifted
+	if il == nil {
+		return 0
+	}
+	il.mu.Lock()
+	defer il.mu.Unlock()
+
+	packRK(il.qFlat, rope, attn, inferLatticeDim)
+	packRK(il.kFlat, attn, rope, inferLatticeDim)
+	gMat := coupling.QKTCognitiveGravity(il.qFlat, il.kFlat, il.work, inferLatticeDim) * il.kappa
+	fq := ai4d.FrobeniusCausalQKTRoPE(rope)
+	gQuat := ai4d.CognitiveGravityFromQKTFrobenius(fq, il.kappa)
+	g := gMat*0.52 + gQuat*0.48
+	if g > 1e6 {
+		g = 1e6
+	}
+	rotorScale := ai4d.IsoclinicRotorScale(g, step)
+	cx, cy, cz := il.cur.Nx/2, il.cur.Ny/2, il.cur.Nz/2
+	coupling.InjectGravityW(il.src, g, cx, cy, cz, 0.14+0.01*float64(step%7))
+	lattice4.StepHeat(il.cur, il.nxt, il.src, il.D, il.dt)
+	il.cur, il.nxt = il.nxt, il.cur
+	clear(il.src.Data)
+	if il.hodgeScratch != nil {
+		hodge.HarmonicProxy(il.cur, il.hodgeScratch, 2, 0.048)
+	}
+	cw := il.cur.Nw / 2
+	if cw < 0 {
+		cw = 0
+	}
+	b := coupling.LatticeToLogitBias(il.cur, cx, cy, cz, cw)
+	return b * rotorScale * (1.0 + 0.02*math.Sqrt(float64(step+1)))
 }
 
 // ApplyLogitBias adds lattice-derived bias to logits (in-place, softmax-stable shift).

@@ -87,7 +87,7 @@ func (Stub) GenerateStream(ctx context.Context, cx Context, model, prompt string
 	if cx.Eng == nil {
 		return e("[4D autoreg unavailable: no engine]\n")
 	}
-	nTok, err := autoregressive4DStream(ctx, cx.Eng, cx.ModelPath, cx.LiftedWeights, prompt, emit)
+	nTok, err := autoregressive4DStream(ctx, cx.Eng, cx.ModelPath, cx.TokenizerGGUF, cx.LiftedWeights, prompt, emit)
 	if err != nil {
 		return err
 	}
@@ -109,13 +109,13 @@ func runesToFloatsLimited(chain []rune, max int) []float32 {
 }
 
 // autoregressive4DStream samples tokens and calls emit with each decoded delta (SentencePiece-aware).
-func autoregressive4DStream(ctx context.Context, eng engine.Engine, modelPath string, lifted []float32, prompt string, emit func(string) error) (int, error) {
+func autoregressive4DStream(ctx context.Context, eng engine.Engine, modelPath, tokenizerGGUF string, lifted []float32, prompt string, emit func(string) error) (int, error) {
 	if strings.TrimSpace(modelPath) == "" {
-		return 0, fmt.Errorf("stub autoreg needs a resolved GGUF path on disk")
+		return 0, fmt.Errorf("stub autoreg needs a resolved model weight path on disk")
 	}
-	tokens, err := LoadGGUFTokenStrings(modelPath)
+	tokens, err := LoadInferenceTokenizerVocab(modelPath, tokenizerGGUF)
 	if err != nil {
-		return 0, fmt.Errorf("gguf tokenizer: %w", err)
+		return 0, fmt.Errorf("tokenizer: %w", err)
 	}
 	vocabSize := len(tokens)
 	text := prompt
@@ -146,8 +146,7 @@ func autoregressive4DStream(ctx context.Context, eng engine.Engine, modelPath st
 		if err != nil || len(logits) != vocabSize {
 			break
 		}
-		// Native 4D lattice ↔ QK proxy: RoPE + spacetime attention drive cognitive gravity; lattice biases logits.
-		latBias := GlobalLattice().OnTokenStep(rope, attn, lifted, step)
+		latBias := GlobalLattice().OnTokenStepRuntime4D(rope, attn, lifted, step)
 		ApplyLogitBias(logits, latBias)
 		PromptTokenBias(logits, tokens, prompt)
 		tid, err := eng.SampleNextTokenFlat(logits, stubSamplerTemp, stubSamplerTopK)

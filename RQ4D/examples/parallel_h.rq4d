@@ -1,0 +1,7 @@
+# parallel_h.rq4d — consecutive H lines execute in one parallel batch (goroutine sweep).
+ALLOC 4
+H 0
+H 1
+H 2
+H 3
+MEASURE

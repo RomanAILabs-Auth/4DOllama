@@ -20,7 +20,6 @@ type Handler struct {
 	Run              *runner.Service
 	Reg              *models.Registry
 	Log              *slog.Logger
-	FourD            bool
 	Metrics          *Metrics
 	OllamaModels     string        // shared blob store root (~/.ollama/models)
 	StreamChunkDelay time.Duration // optional pacing for NDJSON streaming (0 = none)
@@ -187,7 +186,7 @@ func (h *Handler) Generate(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/x-ndjson")
 		w.Header().Set("Cache-Control", "no-cache")
 		w.Header().Set("X-Accel-Buffering", "no")
-		if err := h.Run.StreamGenerate(r.Context(), req, h.FourD, func(delta string) error {
+		if err := h.Run.StreamGenerate(r.Context(), req, func(delta string) error {
 			if delta == "" {
 				return nil
 			}
@@ -217,7 +216,7 @@ func (h *Handler) Generate(w http.ResponseWriter, r *http.Request) {
 		flushStreamWriter(w)
 		return
 	}
-	resp, err := h.Run.Generate(r.Context(), req, h.FourD)
+	resp, err := h.Run.Generate(r.Context(), req)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusNotFound)
 		return
@@ -243,7 +242,7 @@ func (h *Handler) Chat(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/x-ndjson")
 		w.Header().Set("Cache-Control", "no-cache")
 		w.Header().Set("X-Accel-Buffering", "no")
-		if err := h.Run.StreamChat(r.Context(), req, h.FourD, func(delta string) error {
+		if err := h.Run.StreamChat(r.Context(), req, func(delta string) error {
 			if delta == "" {
 				return nil
 			}
@@ -273,7 +272,7 @@ func (h *Handler) Chat(w http.ResponseWriter, r *http.Request) {
 		flushStreamWriter(w)
 		return
 	}
-	resp, err := h.Run.Chat(r.Context(), req, h.FourD)
+	resp, err := h.Run.Chat(r.Context(), req)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusNotFound)
 		return
@@ -311,7 +310,7 @@ func (h *Handler) OAICompletion(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "text/event-stream")
 		w.Header().Set("Cache-Control", "no-cache")
 		w.Header().Set("X-Accel-Buffering", "no")
-		if err := h.Run.StreamGenerate(r.Context(), gr, h.FourD, func(delta string) error {
+		if err := h.Run.StreamGenerate(r.Context(), gr, func(delta string) error {
 			if delta == "" {
 				return nil
 			}
@@ -357,7 +356,7 @@ func (h *Handler) OAICompletion(w http.ResponseWriter, r *http.Request) {
 		flushStreamWriter(w)
 		return
 	}
-	g, err := h.Run.Generate(r.Context(), ollama.GenerateRequest{Model: req.Model, Prompt: req.Prompt, Stream: req.Stream}, h.FourD)
+	g, err := h.Run.Generate(r.Context(), ollama.GenerateRequest{Model: req.Model, Prompt: req.Prompt, Stream: req.Stream})
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusNotFound)
 		return
@@ -398,7 +397,7 @@ func (h *Handler) OAIChat(w http.ResponseWriter, r *http.Request) {
 		first := true
 		if err := h.Run.StreamChat(r.Context(), ollama.ChatRequest{
 			Model: req.Model, Messages: msgs, Stream: &streamOn,
-		}, h.FourD, func(delta string) error {
+		}, func(delta string) error {
 			if delta == "" {
 				return nil
 			}
@@ -445,7 +444,7 @@ func (h *Handler) OAIChat(w http.ResponseWriter, r *http.Request) {
 		flushStreamWriter(w)
 		return
 	}
-	cr, err := h.Run.Chat(r.Context(), ollama.ChatRequest{Model: req.Model, Messages: msgs, Stream: req.Stream}, h.FourD)
+	cr, err := h.Run.Chat(r.Context(), ollama.ChatRequest{Model: req.Model, Messages: msgs, Stream: req.Stream})
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusNotFound)
 		return

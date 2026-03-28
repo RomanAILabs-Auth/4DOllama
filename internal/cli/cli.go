@@ -71,7 +71,7 @@ func cmdImportOllama(args []string, log *slog.Logger) int {
 	return 0
 }
 
-func cmdServe(args []string, _ *slog.Logger, four bool) int {
+func cmdServe(args []string, _ *slog.Logger) int {
 	fs := flag.NewFlagSet("serve", flag.ContinueOnError)
 	verbose := fs.Bool("verbose", false, "debug-level logs (4D engine diagnostics on stderr)")
 	port := fs.String("p", "", "listen port (sets FOURD_PORT for this process; default 13377)")
@@ -87,10 +87,11 @@ func cmdServe(args []string, _ *slog.Logger, four bool) int {
 	cfg := config.Load()
 	if *verbose {
 		cfg.LogLevel = slog.LevelDebug
+		_ = os.Setenv("FOURD_LOG_LEVEL", "debug")
 	}
 	log := LoggerFromConfig(cfg)
 	ctx := context.Background()
-	if err := httpserver.Run(ctx, cfg, log, four); err != nil {
+	if err := httpserver.Run(ctx, cfg, log); err != nil {
 		log.Error("server stopped", slog.Any("err", err))
 		return 1
 	}
@@ -106,8 +107,7 @@ func baseURL() string {
 	return "http://" + host + ":" + cfg.Port
 }
 
-func cmdRun(args []string, log *slog.Logger, fourD bool) int {
-	_ = fourD
+func cmdRun(args []string, log *slog.Logger) int {
 	if len(args) < 1 {
 		fmt.Fprintln(os.Stderr, "usage: 4dollama run <model> [prompt...]")
 		return 2

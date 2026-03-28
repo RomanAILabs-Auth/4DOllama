@@ -29,6 +29,8 @@ type Config struct {
 	DefaultTestModel  string // hint only (e.g. qwen2.5) — docs / install messaging
 	InferenceMode     string // stub (native four_d_engine 4D decode) | ollama (optional upstream hybrid)
 	StreamChunkMs     int    // artificial delay between NDJSON chunks (0 = none)
+	// Forward4DAIToOllama: when stub inference and a model is resolved locally, try Ollama at OLLAMA_HOST first for real llama.cpp text (FOURD_4DAI_OLLAMA / FOURD_TRY_OLLAMA_FIRST).
+	Forward4DAIToOllama bool
 }
 
 func getenv(key, def string) string {
@@ -80,12 +82,12 @@ func Load() Config {
 	home, _ := os.UserHomeDir()
 	defModels := filepath.Join(home, ".4dollama", "models")
 	defOllama := filepath.Join(home, ".ollama", "models")
-	ollamaHost := strings.TrimSuffix(getenv("OLLAMA_HOST", ""), "/")
+	ollamaHost := strings.TrimSuffix(getenv("OLLAMA_HOST", "http://127.0.0.1:11434"), "/")
 	inf := strings.TrimSpace(os.Getenv("FOURD_INFERENCE"))
 	if inf == "" {
-		// Default: native four_d_engine 4D autoregressive decode on pulled GGUF (no hybrid).
-		// Opt-in to upstream llama.cpp via Ollama: FOURD_INFERENCE=ollama and OLLAMA_HOST=...
-		inf = "stub"
+		// Default: forward completions to local Ollama (llama.cpp) for Ollama-identical text;
+		// set FOURD_INFERENCE=stub for native decode only.
+		inf = "ollama"
 	}
 	logLvl := strings.TrimSpace(os.Getenv("FOURD_LOG_LEVEL"))
 	if logLvl == "" {
@@ -94,6 +96,18 @@ func Load() Config {
 	if logLvl == "" {
 		// Quiet default: matches Ollama-style CLI (no per-request or engine spam on stderr).
 		logLvl = "warn"
+	}
+	forward4dai := false
+	if ollamaHost != "" {
+		v := strings.TrimSpace(os.Getenv("FOURD_4DAI_OLLAMA"))
+		if v == "" {
+			v = strings.TrimSpace(os.Getenv("FOURD_TRY_OLLAMA_FIRST"))
+		}
+		if v == "" {
+			forward4dai = true
+		} else {
+			forward4dai = parseBool(v, false)
+		}
 	}
 	host := getenv("FOURD_HOST", "0.0.0.0")
 	port := getenv("FOURD_PORT", DefaultListenPort)
@@ -116,8 +130,9 @@ func Load() Config {
 		OllamaModels:     getenv("OLLAMA_MODELS", defOllama),
 		ShareOllamaBlobs: parseBool(getenv("FOURD_SHARE_OLLAMA", "true"), true),
 		DefaultTestModel: getenv("FOURD_DEFAULT_MODEL", "qwen2.5"),
-		InferenceMode:    inf,
-		StreamChunkMs:    getenvInt("FOURD_STREAM_CHUNK_MS", 0),
+		InferenceMode:         inf,
+		StreamChunkMs:         getenvInt("FOURD_STREAM_CHUNK_MS", 0),
+		Forward4DAIToOllama:   forward4dai,
 	}
 }
 

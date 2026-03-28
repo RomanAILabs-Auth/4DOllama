@@ -431,7 +431,7 @@ func projectStubLogitsGo(last []float32, lifted []float32, vocabSize int, step i
 		z += 0.001 * float32(math.Mod(float64(fi), 97))
 		out[i] = float32(math.Tanh(float64(z)) * 2.0)
 	}
-	if logFirst && vocabSize >= 5 && step == 0 {
+	if logFirst && vocabSize >= 5 && step == 0 && EngineDiagLogsEnabled() {
 		_, _ = fmt.Fprintf(os.Stderr, "🔧 Logits shape: %d | First 5 logits: [%.4f, %.4f, %.4f, %.4f, %.4f]\n",
 			vocabSize, out[0], out[1], out[2], out[3], out[4])
 	}

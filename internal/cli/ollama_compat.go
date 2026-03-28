@@ -79,8 +79,36 @@ func cmdRm(args []string, log *slog.Logger) int {
 		return 1
 	}
 	absModels, _ := filepath.Abs(cfg.ModelsDir)
+	underModels := func(p string) bool {
+		ap, _ := filepath.Abs(p)
+		return strings.HasPrefix(ap, absModels+string(filepath.Separator)) || ap == absModels
+	}
+	if e.MultiManifestPath != "" {
+		if !underModels(e.MultiManifestPath) {
+			fmt.Fprintf(os.Stderr, "4dollama rm: refusing to delete outside FOURD_MODELS (%s)\n", cfg.ModelsDir)
+			return 1
+		}
+		for _, sp := range e.ShardPaths {
+			if !underModels(sp) {
+				fmt.Fprintf(os.Stderr, "4dollama rm: refusing to delete outside FOURD_MODELS (%s)\n", cfg.ModelsDir)
+				return 1
+			}
+		}
+		for _, sp := range e.ShardPaths {
+			_ = os.Remove(sp)
+		}
+		if err := os.Remove(e.MultiManifestPath); err != nil {
+			fmt.Fprintf(os.Stderr, "4dollama rm: %v\n", err)
+			return 1
+		}
+		if log != nil {
+			log.Info("removed sharded romanai model", slog.String("manifest", e.MultiManifestPath))
+		}
+		fmt.Printf("deleted sharded model %s (manifest + %d blobs)\n", name, len(e.ShardPaths))
+		return 0
+	}
 	absPath, _ := filepath.Abs(e.Path)
-	if !strings.HasPrefix(absPath, absModels) {
+	if !strings.HasPrefix(absPath, absModels+string(filepath.Separator)) && absPath != absModels {
 		fmt.Fprintf(os.Stderr, "4dollama rm: refusing to delete outside FOURD_MODELS (%s); use a copy under your models dir\n", cfg.ModelsDir)
 		return 1
 	}

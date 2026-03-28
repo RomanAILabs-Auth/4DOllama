@@ -1,0 +1,18 @@
+# manifold_sweep.rq4d
+# Copyright RomanAILabs - Daniel Harding
+
+# 1. Allocate an 8-Qubit SoA Array
+ALLOC 8
+
+# 2. Hadamard on each lane (consecutive H lines may batch; one global pass after the batch)
+H 0
+H 1
+H 2
+H 3
+H 4
+H 5
+H 6
+H 7
+
+# 3. Measurement readout (geometric probabilities)
+MEASURE

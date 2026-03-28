@@ -1,31 +1,41 @@
 package runner
 
 import (
+	"context"
+	"log/slog"
 	"strings"
 
 	"github.com/4dollama/4dollama/internal/ollama"
 )
 
-// fourDSystemPrompt is prepended to every /api/chat turn so the model can explain 4DOllama accurately.
-const fourDSystemPrompt = `You are assisting via 4DOllama: Ollama-compatible HTTP/CLI, but completions run through the native Rust four_d_engine 4D stack on GGUF you pulled into this server—not through stock llama.cpp unless the operator explicitly enabled hybrid mode.
+// romanAIChatPrompt is the default system instruction for /api/chat: natural RomanAI persona, no internal stack jargon.
+const romanAIChatPrompt = `You are RomanAI, a helpful assistant from RomanAILabs. Reply in clear, natural, friendly English. Match the user's tone. Be concise unless they ask for more detail. Do not mention implementation details, environment variables, or engine internals unless the user explicitly asks how the technology works.`
 
-Architecture to cite accurately:
-- Quaternion RoPE on 4-vectors (e.g. Quaternion::rotate_vec3), not only complex phase on pairs.
-- SpacetimeAttention4D: causal quaternion attention over RoPE-shaped token quads.
-- 4D GEMM / w-axis contraction on lifted tensor views.
-- GGUF: manifest scan, weight sample/lift, optional .4dgguf cache; autoregressive decode samples vocab via ProjectStubLogits + four_d_engine.
+// romanAITechnicalAppendix is merged into the system prompt only when debug logging is enabled (e.g. serve -verbose).
+const romanAITechnicalAppendix = `
 
-Default inference is native 4D decode. Optional hybrid (FOURD_INFERENCE=ollama + OLLAMA_HOST) is off unless configured. Be concise; do not invent features.`
+[Operator/debug context — only discuss if the user asks about the stack:]
+4dollama can route completions through a native geometric engine and/or upstream Ollama depending on configuration. Cite docs or operator settings rather than inventing APIs.`
 
-func ensureFourDSystemPrompt(msgs []ollama.Message) []ollama.Message {
+// RomanAIFriendlyFallback is returned when the stub path cannot produce human-quality text (e.g. .4dai without a working upstream).
+const RomanAIFriendlyFallback = "I'm here and ready to chat, but I couldn't finish a proper reply just yet. Please start Ollama with this same model name available (create it there from your weights if needed), then try again—I’ll answer in clear, natural English."
+
+func ensureChatSystemPrompt(ctx context.Context, msgs []ollama.Message, log *slog.Logger) []ollama.Message {
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	base := romanAIChatPrompt
+	if log != nil && log.Enabled(ctx, slog.LevelDebug) {
+		base = romanAIChatPrompt + romanAITechnicalAppendix
+	}
 	if len(msgs) == 0 {
-		return []ollama.Message{{Role: "system", Content: fourDSystemPrompt}}
+		return []ollama.Message{{Role: "system", Content: base}}
 	}
 	if strings.EqualFold(strings.TrimSpace(msgs[0].Role), "system") {
 		first := msgs[0]
-		merged := fourDSystemPrompt
+		merged := base
 		if strings.TrimSpace(first.Content) != "" {
-			merged = fourDSystemPrompt + "\n\n" + first.Content
+			merged = base + "\n\n" + first.Content
 		}
 		out := make([]ollama.Message, 0, len(msgs))
 		out = append(out, ollama.Message{Role: "system", Content: merged})
@@ -33,7 +43,7 @@ func ensureFourDSystemPrompt(msgs []ollama.Message) []ollama.Message {
 		return out
 	}
 	out := make([]ollama.Message, 0, len(msgs)+1)
-	out = append(out, ollama.Message{Role: "system", Content: fourDSystemPrompt})
+	out = append(out, ollama.Message{Role: "system", Content: base})
 	out = append(out, msgs...)
 	return out
 }

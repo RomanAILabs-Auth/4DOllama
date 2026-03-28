@@ -3,9 +3,10 @@ package ollama
 // JSON shapes aligned with Ollama HTTP API (subset used by 4dollama).
 
 type GenerateRequest struct {
-	Model  string `json:"model"`
-	Prompt string `json:"prompt"`
-	Stream *bool  `json:"stream,omitempty"`
+	Model   string         `json:"model"`
+	Prompt  string         `json:"prompt"`
+	Stream  *bool          `json:"stream,omitempty"`
+	Options map[string]any `json:"options,omitempty"`
 }
 
 type GenerateResponse struct {
@@ -21,9 +22,10 @@ type Message struct {
 }
 
 type ChatRequest struct {
-	Model    string    `json:"model"`
-	Messages []Message `json:"messages"`
-	Stream   *bool     `json:"stream,omitempty"`
+	Model    string         `json:"model"`
+	Messages []Message      `json:"messages"`
+	Stream   *bool          `json:"stream,omitempty"`
+	Options  map[string]any `json:"options,omitempty"`
 }
 
 type ChatResponse struct {

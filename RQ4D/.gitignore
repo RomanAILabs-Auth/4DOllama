@@ -1,0 +1,18 @@
+# Binaries (built at repo root)
+*.exe
+*.dll
+*.so
+*.dylib
+/rq4d
+/rq4d.exe
+
+# Test / build
+*.test
+*.out
+/vendor/
+
+# IDE / OS
+.idea/
+.vscode/
+.DS_Store
+Thumbs.db

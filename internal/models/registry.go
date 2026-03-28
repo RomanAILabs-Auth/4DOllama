@@ -19,6 +19,12 @@ type Entry struct {
 	ModifiedAt time.Time
 	// Format is "gguf" or "4dai" (JSON romanai.4dai or ROMANAI4+safetensors shard).
 	Format string
+	// ShardPaths is non-empty for multi-part native .4dai (see .multi4dai manifest); Path is the first shard.
+	ShardPaths []string
+	// MultiManifestPath is set when the model is registered via <name>.multi4dai (Path points at a blob, not this file).
+	MultiManifestPath string
+	// TokenizerGGUF is an optional GGUF path (metadata-only read) for tokenizer.ggml.tokens when weights are .4dai.
+	TokenizerGGUF string
 }
 
 // Registry scans FOURD_MODELS for *.gguf and optionally merges Ollama's manifests + shared blobs.
@@ -89,6 +95,13 @@ func (r *Registry) list4DAI() ([]Entry, error) {
 		if d.IsDir() {
 			return nil
 		}
+		rel, rerr := filepath.Rel(r.dir, path)
+		if rerr == nil {
+			parts := strings.Split(rel, string(filepath.Separator))
+			if len(parts) > 0 && parts[0] == "blobs" {
+				return nil
+			}
+		}
 		if !strings.EqualFold(filepath.Ext(path), ".4dai") {
 			return nil
 		}
@@ -97,13 +110,17 @@ func (r *Registry) list4DAI() ([]Entry, error) {
 			return err
 		}
 		name := strings.TrimSuffix(filepath.Base(path), filepath.Ext(path))
-		out = append(out, Entry{
+		e := Entry{
 			Name:       name,
 			Path:       path,
 			Size:       st.Size(),
 			ModifiedAt: st.ModTime().UTC(),
 			Format:     "4dai",
-		})
+		}
+		if tok := ReadTokenizerFromModelfile(SiblingModelfilePath(path)); tok != "" {
+			e.TokenizerGGUF = tok
+		}
+		out = append(out, e)
 		return nil
 	})
 	return out, err
@@ -147,6 +164,14 @@ func (r *Registry) List() ([]Entry, error) {
 		}
 	}
 
+	sharded, err := ListRomanaiShardedEntries(r.dir)
+	if err != nil && r.log != nil {
+		r.log.Debug("sharded romanai list", slog.Any("err", err))
+	}
+	for _, e := range sharded {
+		byName[strings.ToLower(e.Name)] = e
+	}
+
 	out := make([]Entry, 0, len(byName))
 	for _, e := range byName {
 		out = append(out, e)
@@ -180,6 +205,9 @@ func (r *Registry) Resolve(name string) (Entry, bool) {
 				return e, true
 			}
 		}
+	}
+	if e, ok := FindShardedRomanaiEntry(r.dir, key); ok {
+		return e, true
 	}
 	if strings.HasSuffix(key, "-romanai") {
 		stem := strings.TrimSuffix(key, "-romanai")

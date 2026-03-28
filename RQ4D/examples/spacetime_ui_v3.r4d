@@ -1,0 +1,45 @@
+# spacetime_ui_v3.r4d
+# Copyright RomanAILabs - Daniel Harding
+# Roma4D UI / worldtube companion — run with native r4d (not rq4d).
+# Mirrors par-for spacetime sweeps aligned with RQ4D’s geometric-qubit story.
+
+def main() -> None:
+    print("==========================================")
+    print("   ROMA4D // SPACETIME ENGINE v3")
+    print("==========================================")
+
+    rot: rotor = rotor(angle=0.05, plane="xy")
+
+    worldtube: list[vec4] = [vec4(x=1, y=1, z=0, w=1) for _ in range(2000)]
+
+    _tau: time = t
+
+    tick: int = 0
+    shift: int = 0
+
+    while tick < 60:
+        spacetime:
+            par for p in worldtube:
+                p = p * rot
+
+        print("FRAME")
+
+        row: int = 0
+
+        while row < 20:
+            if shift < 5:
+                print("* * * * * * * * * *")
+            else:
+                print("  * * * * * * * * *")
+            row = row + 1
+
+        print("----------------------------------")
+
+        shift = shift + 1
+        if shift > 9:
+            shift = 0
+
+        tick = tick + 1
+
+    print("DONE")
+    return

@@ -1,0 +1,15 @@
+# singularity_v2.rq4d
+# Copyright RomanAILabs - Daniel Harding
+
+ALLOC 4
+
+# Flip Qubit 0 to |1> so the CNOT chain definitely triggers
+X 0
+
+# Chain the entanglement through the entire 4D manifold
+CNOT 0 1
+CNOT 1 2
+CNOT 2 3
+CNOT 3 0
+
+MEASURE

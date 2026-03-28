@@ -13,7 +13,7 @@ import (
 )
 
 // CmdCreate implements `4dollama create <name> -f Modelfile` (Ollama-shaped).
-// Supports FROM for .gguf (copy) and .4dai (JSON romanai merge or single copy; binary shards: single FROM only).
+// Supports FROM for .gguf (copy) and .4dai (JSON merge, single native copy, or multi-part native via *_part1..4 + .multi4dai manifest).
 func CmdCreate(modelName, modelfilePath string, log *slog.Logger) int {
 	modelName = strings.TrimSpace(modelName)
 	if modelName == "" {
@@ -38,6 +38,14 @@ func CmdCreate(modelName, modelfilePath string, log *slog.Logger) int {
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "4dollama create: %v\n", err)
 		return 1
+	}
+	if len(paths) == 1 && strings.EqualFold(filepath.Ext(paths[0]), ".4dai") {
+		expanded, xerr := models.ExpandRomanaiV2PartShards(paths[0])
+		if xerr != nil {
+			fmt.Fprintf(os.Stderr, "4dollama create: romanai shards: %v\n", xerr)
+			return 1
+		}
+		paths = expanded
 	}
 
 	for _, p := range paths {
@@ -94,31 +102,48 @@ func CmdCreate(modelName, modelfilePath string, log *slog.Logger) int {
 		}
 	case ".4dai":
 		outPath := filepath.Join(cfg.ModelsDir, modelName+".4dai")
-		if len(paths) == 1 {
-			bin, err := models.IsRomanaiBinary4DAI(paths[0])
-			if err != nil {
-				fmt.Fprintf(os.Stderr, "4dollama create: %v\n", err)
-				return 1
-			}
-			if bin {
-				if err := copyFile(paths[0], outPath); err != nil {
+		if len(paths) > 1 {
+			allNative := true
+			for _, p := range paths {
+				ok, err := models.IsNative4DAIWeight(p)
+				if err != nil {
 					fmt.Fprintf(os.Stderr, "4dollama create: %v\n", err)
 					return 1
 				}
-			} else {
-				if err := copyFile(paths[0], outPath); err != nil {
-					fmt.Fprintf(os.Stderr, "4dollama create: %v\n", err)
-					return 1
+				if !ok {
+					allNative = false
+					break
 				}
 			}
-		} else {
+			if allNative {
+				blobNames := make([]string, 0, len(paths))
+				for _, src := range paths {
+					blobNames = append(blobNames, modelName+"__"+filepath.Base(src))
+				}
+				if err := models.WriteRomanaiShardedManifest(cfg.ModelsDir, modelName, blobNames); err != nil {
+					fmt.Fprintf(os.Stderr, "4dollama create: sharded manifest: %v\n", err)
+					return 1
+				}
+				if log != nil {
+					log.Info("created sharded romanai model", slog.String("name", modelName), slog.Int("shards", len(paths)))
+				}
+				break
+			}
 			if err := models.MergeRomanaiJSON4DAIFiles(paths, outPath); err != nil {
 				fmt.Fprintf(os.Stderr, "4dollama create: merge .4dai: %v\n", err)
 				return 1
 			}
-		}
-		if log != nil {
-			log.Info("created romanai model", slog.String("name", modelName), slog.String("path", outPath))
+			if log != nil {
+				log.Info("created romanai model", slog.String("name", modelName), slog.String("path", outPath))
+			}
+		} else {
+			if err := copyFile(paths[0], outPath); err != nil {
+				fmt.Fprintf(os.Stderr, "4dollama create: %v\n", err)
+				return 1
+			}
+			if log != nil {
+				log.Info("created romanai model", slog.String("name", modelName), slog.String("path", outPath))
+			}
 		}
 	default:
 		fmt.Fprintf(os.Stderr, "4dollama create: unsupported FROM extension %q (use .gguf or .4dai)\n", ext0)

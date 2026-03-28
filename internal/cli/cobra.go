@@ -4,18 +4,22 @@ import (
 	"fmt"
 	"log/slog"
 	"os"
+	"strings"
 
 	"github.com/4dollama/4dollama/internal/version"
 	"github.com/spf13/cobra"
 )
 
 var (
-	rootLog       *slog.Logger
-	fourDMode     bool
-	serveVerbose  bool
-	servePort     string
-	serveHost     string
+	rootLog         *slog.Logger
+	serveVerbose    bool
+	servePort       string
+	serveHost       string
 	createModelfile string
+	convertOutput    string
+	convertName      string
+	convertNoInstall bool
+	convertRunSmoke  bool
 )
 
 // Execute runs the Cobra CLI (Ollama-shaped command tree for 4dollama).
@@ -34,9 +38,9 @@ func Execute(log *slog.Logger) int {
 
 var rootCmd = &cobra.Command{
 	Use:   "4dollama",
-	Short: "Large language model runner (Ollama-compatible CLI + RomanAILabs 4D engine)",
-	Long: `4dollama exposes the same verbs as https://github.com/ollama/ollama (serve, pull, run, list, …)
-while preserving the native four_d_engine path, Cl(4,0) lattice coupling, and romanai .4dai / GGUF carriers.`,
+	Short: "Drop-in Ollama-compatible CLI and API (RomanAI + silent RQ4D geometry)",
+	Long: `4dollama mirrors https://github.com/ollama/ollama (serve, run, chat, pull, list, …).
+Completions default to your local Ollama server for natural text; RQ4D lattice work runs in-process on every request without changing the transcript.`,
 	Version:       version.Version,
 	SilenceErrors: true,
 	SilenceUsage:  true,
@@ -50,14 +54,12 @@ while preserving the native four_d_engine path, Cl(4,0) lattice coupling, and ro
 }
 
 func init() {
-	rootCmd.PersistentFlags().BoolVar(&fourDMode, "fourd-mode", false,
-		"enable true 4D native inference features where supported (FOURD lattice coupling)")
-
 	rootCmd.AddCommand(
 		newServeCmd(),
 		newCreateCmd(),
 		newShowCmd(),
 		newRunCmd(),
+		newChatCmd(),
 		newStopCmd(),
 		newPullCmd(),
 		newPushCmd(),
@@ -74,6 +76,7 @@ func init() {
 		newBenchmarkCmd(),
 		newDoctorCmd(),
 		newFourdCmd(),
+		newConvertCmd(),
 	)
 	rootCmd.InitDefaultHelpCmd()
 }
@@ -93,7 +96,7 @@ func newServeCmd() *cobra.Command {
 			if serveHost != "" {
 				rest = append(rest, "-h", serveHost)
 			}
-			os.Exit(cmdServe(rest, rootLog, fourDMode))
+			os.Exit(cmdServe(rest, rootLog))
 		},
 	}
 	c.Flags().BoolVar(&serveVerbose, "verbose", false, "debug-level logs (4D engine diagnostics on stderr)")
@@ -116,6 +119,35 @@ func newCreateCmd() *cobra.Command {
 	return c
 }
 
+func newConvertCmd() *cobra.Command {
+	c := &cobra.Command{
+		Use:   "convert PATH.gguf [prompt...]",
+		Short: "Convert a GGUF checkpoint to native Cl(4,0) F16 .4dai (safetensors), install under FOURD_MODELS, optional run",
+		Long: `Reads tensors sequentially (one in RAM at a time), dequantizes common GGML types (F32/F16/BF16, Q4_0/Q4_1/Q5_*/Q8_0, Q4_K),
+packs each into 4×4 Clifford blocks as F16, and writes a safetensors-compatible .4dai file.
+
+By default the artifact is registered in FOURD_MODELS and a Modelfile sidecar is written.
+Pass --run (-r) to perform a one-shot HTTP completion smoke test (starts local serve if needed).
+Use FOURD_INFERENCE=stub unless you intentionally forward to Ollama.`,
+		Args: cobra.MinimumNArgs(1),
+		Run: func(cmd *cobra.Command, args []string) {
+			prompt := strings.TrimSpace(strings.Join(args[1:], " "))
+			install := !convertNoInstall
+			doRun := convertRunSmoke
+			if doRun && !install {
+				_, _ = fmt.Fprintln(os.Stderr, "4dollama convert: --run requires install (omit --no-install)")
+				os.Exit(2)
+			}
+			os.Exit(CmdConvert(args[0], convertOutput, convertName, install, doRun, prompt, rootLog))
+		},
+	}
+	c.Flags().StringVarP(&convertOutput, "output", "o", "", "Output .4dai path (default: FOURD_MODELS/<name>.4dai when installing, else <stem>_4d.4dai beside the GGUF)")
+	c.Flags().StringVar(&convertName, "name", "", "Model name for install + run (default: derived from GGUF filename)")
+	c.Flags().BoolVar(&convertNoInstall, "no-install", false, "Only write the converted file; do not copy into FOURD_MODELS")
+	c.Flags().BoolVarP(&convertRunSmoke, "run", "r", false, "After install, call /api/generate for a smoke test (optional trailing words = prompt)")
+	return c
+}
+
 func newShowCmd() *cobra.Command {
 	return &cobra.Command{
 		Use:   "show MODEL",
@@ -133,7 +165,18 @@ func newRunCmd() *cobra.Command {
 		Short: "Run a model (REPL with TTY, or one-shot prompt / stdin)",
 		Args:  cobra.MinimumNArgs(1),
 		Run: func(cmd *cobra.Command, args []string) {
-			os.Exit(cmdRun(args, rootLog, fourDMode))
+			os.Exit(cmdRun(args, rootLog))
+		},
+	}
+}
+
+func newChatCmd() *cobra.Command {
+	return &cobra.Command{
+		Use:   "chat MODEL [prompt ...]",
+		Short: "Same as run — interactive or one-shot chat (Ollama parity)",
+		Args:  cobra.MinimumNArgs(1),
+		Run: func(cmd *cobra.Command, args []string) {
+			os.Exit(cmdRun(args, rootLog))
 		},
 	}
 }

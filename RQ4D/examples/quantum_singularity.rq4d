@@ -1,0 +1,19 @@
+# quantum_singularity.rq4d
+# Copyright RomanAILabs - Daniel Harding
+
+# --- STEP 1: INITIALIZE THE VOID ---
+ALLOC 4
+
+# --- STEP 2: CREATE THE SEED ---
+# Put Qubit 0 into Superposition (Hadamard Rotor)
+H 0
+
+# --- STEP 3: FOLD THE MANIFOLD (ENTANGLEMENT) ---
+# Chain the superposition through the other 3 qubits
+# This creates a 4-way maximally entangled GHZ State
+CNOT 0 1
+CNOT 1 2
+CNOT 2 3
+
+# --- STEP 4: TRIGGER THE SINGULARITY ---
+MEASURE
