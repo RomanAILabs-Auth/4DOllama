@@ -19,53 +19,8 @@ import (
 	"github.com/4dollama/4dollama/internal/httpserver"
 	"github.com/4dollama/4dollama/internal/ollamareg"
 	"github.com/4dollama/4dollama/internal/tui"
-	"github.com/4dollama/4dollama/internal/version"
 	"golang.org/x/term"
 )
-
-// Usage prints CLI help to stdout.
-func Usage() {
-	fmt.Print(`4dollama — Ollama-compatible surface with the 4D engine
-
-Usage:
-  4dollama [global flags] <command> [args]
-
-Commands (Ollama-shaped; same verbs as https://github.com/ollama/ollama CLI):
-  serve              Start the HTTP API (Ollama-compatible routes on FOURD_PORT)
-                       serve -p <port>  serve -h <host>  serve -verbose
-  pull <model>       Download GGUF from Ollama registry (registry.ollama.ai)
-  run <model> [prompt]  One-shot generate or >>> REPL (uses /api/chat + native 4D lattice coupling)
-  list               List models (GET /api/tags)
-  ps                 Running models (JSON from /api/ps)
-  show <model>       Model manifest summary (best-effort; not full Modelfile dump)
-  cp <src> <dst>     Copy tag within registry (stub — use pull + rename externally)
-  rm <model>         Remove local model blob (destructive; uses registry path)
-  create             Reserved (Ollama parity — not implemented)
-  push               Reserved (Ollama parity — not implemented)
-  stop               Reserved (Ollama parity — not implemented)
-  import-ollama <m>  Copy GGUF from local Ollama after "ollama pull" (tensor-safe path)
-  version            Print version
-  benchmark-4d       Compare latency vs OLLAMA_HOST (if set)
-  benchmark          Table: tokens/sec + coherence vs Ollama (same model)
-  doctor             Health, GPU (CPU vs CUDA/Metal), models — confirms CPU mode when no GPU
-  fourd              Native 4D lattice + Cl(4,0) substrate (see fourd lattice | fourd ga-demo)
-
-Global flags:
-  -help
-  -fourd-mode       Enable 4D coherence features in responses
-
-Environment:
-  FOURD_DROPIN=1     When FOURD_HOST unset: bind 127.0.0.1 (use FOURD_PORT=11434 to replace Ollama on its port)
-  FOURD_LATTICE_KAPPA  Scale for ||QK^T||_F → lattice cognitive gravity (default 0.0015)
-  FOURD_HOST, FOURD_PORT (default 13377), FOURD_MODELS, FOURD_LOG_LEVEL (or LOG_LEVEL; default warn), FOURD_LOG_JSON
-  FOURD_INFERENCE — stub|fourd|native (default): GGUF + four_d_engine 4D decode only. ollama: hybrid via OLLAMA_HOST (explicit opt-in)
-  FOURD_STREAM_CHUNK_MS — optional delay between streamed NDJSON chunks (default 0; smoother perceived streaming)
-  OLLAMA_HOST, OLLAMA_REGISTRY, OLLAMA_MODELS
-  FOURD_SHARE_OLLAMA (default true) — list/resolve/pull reuse ~/.ollama/models blobs
-  FOURD_DEFAULT_MODEL — optional hint (default qwen2.5)
-
-`)
-}
 
 // LoggerFromConfig builds stderr slog (same shape as main); used by serve -verbose.
 func LoggerFromConfig(cfg config.Config) *slog.Logger {
@@ -77,54 +32,6 @@ func LoggerFromConfig(cfg config.Config) *slog.Logger {
 		h = slog.NewTextHandler(os.Stderr, opts)
 	}
 	return slog.New(h)
-}
-
-// Run parses argv (after global flags) and dispatches subcommands.
-func Run(args []string, log *slog.Logger, fourDMode bool) int {
-	if len(args) == 0 {
-		Usage()
-		return 2
-	}
-	cmd := args[0]
-	rest := args[1:]
-	switch cmd {
-	case "serve":
-		return cmdServe(rest, log, fourDMode)
-	case "pull":
-		return cmdPull(rest, log)
-	case "import-ollama":
-		return cmdImportOllama(rest, log)
-	case "run":
-		return cmdRun(rest, log, fourDMode)
-	case "list":
-		return cmdList(rest, log)
-	case "ps":
-		return cmdPs(rest, log)
-	case "version", "--version", "-v":
-		fmt.Println(version.Version)
-		return 0
-	case "create", "export", "import", "push", "stop":
-		fmt.Fprintf(os.Stderr, "4dollama: %q is reserved for Ollama parity — not implemented in this release.\n", cmd)
-		return 2
-	case "show":
-		return cmdShow(rest, log)
-	case "rm":
-		return cmdRm(rest, log)
-	case "cp":
-		return cmdCp(rest, log)
-	case "benchmark-4d":
-		return cmdBenchmark(rest, log)
-	case "benchmark":
-		return cmdBenchmarkTable(rest, log)
-	case "doctor":
-		return cmdDoctor(log)
-	case "fourd":
-		return cmdFourd(rest, log)
-	default:
-		fmt.Fprintf(os.Stderr, "4dollama: unknown command %q\n", cmd)
-		Usage()
-		return 2
-	}
 }
 
 func cmdPull(args []string, log *slog.Logger) int {

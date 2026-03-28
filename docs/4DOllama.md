@@ -2,6 +2,28 @@
 
 This document preserves the **4DOllama** product guide for the **4DEngine** monorepo. The repository’s main [README](../README.md) leads with **4DOllama**; this file is the home for Ollama-style CLI, HTTP API, and `four_d_engine` build notes.
 
+**LLM / automation primer:** For a single reference tuned for tools and agents, read **[4DOLLAMA_REFERENCE_FOR_LLMS.md](./4DOLLAMA_REFERENCE_FOR_LLMS.md)** (install, CLI verbs, `create` path rules, “is it 4D?”, Python vs Go).
+
+## Cobra CLI (Ollama-shaped verbs)
+
+`4dollama` uses **Cobra**. Run **`4dollama help`** for the full tree. Highlights:
+
+| Command | Purpose |
+|---------|---------|
+| `serve` | HTTP API (`--port` / `-p`, `--host`, `--verbose`) |
+| `run`, `pull`, `list`, `ps`, `show`, `cp`, `rm` | Same idea as Ollama |
+| `create MODEL -f Modelfile` | **FROM** `.gguf` or `.4dai` (multi-shard **JSON** `romanai.4dai` merge). Relative **FROM** resolves from **`4dollama create`’s CWD**; shards are copied to **`$FOURD_MODELS/blobs/`** too. |
+| `stop` | `POST /api/stop` (parity; stateless engine) |
+| `push`, `signin`, `signout` | Delegate to **`ollama`** on PATH when available |
+| `launch` | Open **ollama.com** in the browser |
+| `--fourd-mode` | Global flag for 4D coherence hooks in compatible backends |
+
+**Note:** Root **`-h`** is help. For bind address use **`4dollama serve --host …`**, not **`serve -h`**.
+
+## Optional Python `fourdollama` + `r4d run`
+
+The **`fourdollama`** package (under `4DOllama/`) runs **`r4d run`** on generated **`kernel.r4d`**. A historical bug could double **`work/<uuid>/`** in the path Roma4D searched; **fixed** by passing **`kernel.r4d`** (basename) with **`cwd`** = the job dir when the file lives inside it (`fourdollama/r4d_subprocess.py`).
+
 ## Ollama-identical interactive chat (Phase 11)
 
 `4dollama run <model>` matches **`ollama run`**-style usage: a plain **`>>> `** line REPL on normal stdout (scrollback and text selection work like any terminal app—no full-screen TUI). Assistant text **streams over `/api/chat`**: the server flushes NDJSON **as each token is produced** (native stub) or **as upstream Ollama chunks arrive** (hybrid). The native stub **does not** prepend debug lines to the stream by default (Ollama parity). To restore the legacy streamed preamble (`model=`, path, prompt echo, token count), set **`FOURD_STREAM_META=1`**. **`/help`** prints one short line on stderr; **`/clear`**, **`/bye`** (also **`/exit`** / **`/quit`**). Consecutive duplicate user messages are dropped server-side. If you still see a pink header or duplicate “Message… Ollama-style” hints, that is a **stale `4dollama.exe`** on PATH—run **`scripts/Backup-And-Reinstall-4dollama.ps1`** or rebuild and put **`%USERPROFILE%\.4dollama\bin`** first on PATH.
@@ -61,7 +83,7 @@ roma4d/                # Roma4D language (see repository README)
 | GET | `/metrics` | Prometheus text (basic counters) |
 | GET | `/api/version` | Server version |
 | GET | `/api/engine` | Server + **four_d_engine** capability JSON |
-| GET | `/api/tags` | Lists `*.gguf` under `FOURD_MODELS` |
+| GET | `/api/tags` | Lists **`*.gguf`**, shared Ollama library, and **`*.4dai`** under `FOURD_MODELS` (`Details.format`) |
 | GET | `/api/ps` | Stub (empty) |
 | POST | `/api/pull` | Pull from Ollama registry (NDJSON stream) |
 | POST | `/api/generate`, `/api/chat`, `/api/embeddings` | Ollama-shaped JSON |

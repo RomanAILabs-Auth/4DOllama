@@ -315,7 +315,7 @@ docker compose up --build
 | `FOURD_LOG_LEVEL` | `warn` | `debug` / `info` / `warn` / `error` |
 | `FOURD_DROPIN` | `0` | If `1`, pins loopback when `FOURD_HOST` unset |
 
-Full tables: **[docs/4DOllama.md](docs/4DOllama.md)**.
+Full tables: **[docs/4DOllama.md](docs/4DOllama.md)** · **LLM/agent reference:** **[docs/4DOLLAMA_REFERENCE_FOR_LLMS.md](docs/4DOLLAMA_REFERENCE_FOR_LLMS.md)** · **Architecture / “4D” honesty:** **[docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)**.
 
 <br/>
 

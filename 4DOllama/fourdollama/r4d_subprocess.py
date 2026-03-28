@@ -11,6 +11,21 @@ from pathlib import Path
 from fourdollama.config import Settings
 
 
+def _r4d_argv_path_and_cwd(kernel_path: Path, cwd: Path) -> tuple[str, str]:
+    """
+    Roma4D's `r4d run` resolves paths relative to cwd. Passing a path that already
+    contains work/<job>/ while cwd is also work/<job> can produce work/<job>/work/<job>/kernel.r4d.
+    When the kernel file lives inside cwd, pass only the basename so resolution is unambiguous.
+    """
+    cw = cwd.resolve()
+    kp = Path(kernel_path).resolve()
+    try:
+        kp.relative_to(cw)
+        return kp.name, str(cw)
+    except ValueError:
+        return str(kp), str(cw)
+
+
 def _child_env(settings: Settings) -> dict[str, str]:
     env = {k: v for k, v in os.environ.items() if isinstance(v, str)}
     if settings.pkg_root is not None and settings.pkg_root.is_dir():
@@ -26,13 +41,14 @@ async def stream_r4d_lines(
     exe = settings.r4d_exe
     if not exe.is_file() and os.path.sep not in str(exe):
         pass
+    arg_path, cwd_str = _r4d_argv_path_and_cwd(kernel_path, cwd)
     proc: asyncio.subprocess.Process | None = None
     try:
         proc = await asyncio.create_subprocess_exec(
             str(exe),
             "run",
-            str(kernel_path),
-            cwd=str(cwd),
+            arg_path,
+            cwd=cwd_str,
             env=_child_env(settings),
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE,

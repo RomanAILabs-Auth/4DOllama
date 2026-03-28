@@ -32,19 +32,29 @@ func cmdShow(args []string, log *slog.Logger) int {
 		fmt.Fprintf(os.Stderr, "4dollama show: model %q not found\n", name)
 		return 1
 	}
+	format := e.Format
+	if format == "" {
+		format = "gguf"
+	}
 	eng := engine.New()
 	var pc int64
-	if n, err := eng.GGUFParamCount(e.Path); err == nil {
-		pc = n
+	if strings.EqualFold(format, "gguf") {
+		if n, err := eng.GGUFParamCount(e.Path); err == nil {
+			pc = n
+		}
 	}
 	out := map[string]any{
 		"name":         name + ":latest",
 		"path":         e.Path,
 		"size":         e.Size,
 		"modified_at":  e.ModifiedAt.Format(time.RFC3339Nano),
+		"format":       format,
 		"param_count":  pc,
 		"engine":       "4dollama-native",
 		"lattice_note": "Autoregressive decode couples RoPE + SpacetimeAttention4D → 4D lattice (||QKᵀ||_F proxy) → logit bias",
+	}
+	if strings.EqualFold(format, "4dai") {
+		out["carrier"] = "Cl(4,0) isomorphic 4×4 blocks (romanai.4dai JSON or ROMANAI4+safetensors)"
 	}
 	enc := json.NewEncoder(os.Stdout)
 	enc.SetIndent("", "  ")
@@ -106,7 +116,11 @@ func cmdCp(args []string, log *slog.Logger) int {
 		return 1
 	}
 	_ = os.MkdirAll(cfg.ModelsDir, 0o755)
-	dstPath := filepath.Join(cfg.ModelsDir, dstName+".gguf")
+	ext := strings.ToLower(filepath.Ext(se.Path))
+	if ext == "" {
+		ext = ".gguf"
+	}
+	dstPath := filepath.Join(cfg.ModelsDir, dstName+ext)
 	inF, err := os.Open(se.Path)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "4dollama cp: %v\n", err)

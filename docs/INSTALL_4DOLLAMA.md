@@ -33,6 +33,12 @@ This guide is for the **RomanAILabs-Auth/4DOllama** monorepo (**4DEngine**): **4
    4dollama run qwen2.5
    ```
 
+### `create` with RomanAI `.4dai` shards
+
+- Run **`4dollama create mymodel -f ./Modelfile`** from the directory where your **`FROM ./part1.4dai`** paths resolve (relative **`FROM`** uses **your shell’s current working directory**, not the Modelfile folder).
+- If a shard is missing, you’ll see **`[4DOLLAMA FATAL] Shard not found! Searched absolute path: …`** plus the CWD used.
+- Copies also land in **`%USERPROFILE%\.4dollama\models\blobs\`** as **`mymodel__part1.4dai`**, etc.
+
 **Optional:** If Go is missing, run:
 
 ```powershell

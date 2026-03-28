@@ -28,12 +28,12 @@ async def stream_engine(
 ) -> AsyncIterator[str]:
     s = settings or Settings.load()
     canonical = ensure_model_registered(s, model)
-    root = s.data_dir / "work"
+    root = (s.data_dir / "work").resolve()
     root.mkdir(parents=True, exist_ok=True)
     job = uuid.uuid4().hex
-    d = root / job
+    d = (root / job).resolve()
     d.mkdir(parents=True, exist_ok=True)
-    kpath = d / "kernel.r4d"
+    kpath = (d / "kernel.r4d").resolve()
     write_kernel_r4d(kpath, canonical, prompt, system)
     async for line in stream_r4d_lines(s, kpath, d):
         yield line

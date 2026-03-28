@@ -11,12 +11,14 @@ import (
 	"time"
 )
 
-// Entry describes a discovered GGUF on disk (or an Ollama blob that holds GGUF weights).
+// Entry describes a discovered model file on disk (GGUF, romanai .4dai, or Ollama blob).
 type Entry struct {
 	Name       string
 	Path       string
 	Size       int64
 	ModifiedAt time.Time
+	// Format is "gguf" or "4dai" (JSON romanai.4dai or ROMANAI4+safetensors shard).
+	Format string
 }
 
 // Registry scans FOURD_MODELS for *.gguf and optionally merges Ollama's manifests + shared blobs.
@@ -70,6 +72,37 @@ func (r *Registry) listGGUF() ([]Entry, error) {
 			Path:       path,
 			Size:       st.Size(),
 			ModifiedAt: st.ModTime().UTC(),
+			Format:     "gguf",
+		})
+		return nil
+	})
+	return out, err
+}
+
+func (r *Registry) list4DAI() ([]Entry, error) {
+	_ = os.MkdirAll(r.dir, 0o755)
+	var out []Entry
+	err := filepath.WalkDir(r.dir, func(path string, d fs.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		if d.IsDir() {
+			return nil
+		}
+		if !strings.EqualFold(filepath.Ext(path), ".4dai") {
+			return nil
+		}
+		st, err := d.Info()
+		if err != nil {
+			return err
+		}
+		name := strings.TrimSuffix(filepath.Base(path), filepath.Ext(path))
+		out = append(out, Entry{
+			Name:       name,
+			Path:       path,
+			Size:       st.Size(),
+			ModifiedAt: st.ModTime().UTC(),
+			Format:     "4dai",
 		})
 		return nil
 	})
@@ -99,6 +132,21 @@ func (r *Registry) List() ([]Entry, error) {
 		byName[strings.ToLower(e.Name)] = e
 	}
 
+	dai, err := r.list4DAI()
+	if err != nil {
+		return nil, err
+	}
+	for _, e := range dai {
+		k := strings.ToLower(e.Name)
+		if _, ok := byName[k]; ok {
+			alt := e
+			alt.Name = e.Name + "-romanai"
+			byName[strings.ToLower(alt.Name)] = alt
+		} else {
+			byName[k] = e
+		}
+	}
+
 	out := make([]Entry, 0, len(byName))
 	for _, e := range byName {
 		out = append(out, e)
@@ -114,7 +162,7 @@ func (r *Registry) Resolve(name string) (Entry, bool) {
 	}
 	key := strings.ToLower(name)
 
-	// Prefer local .gguf override
+	// Prefer local .gguf then local .4dai
 	local, err := r.listGGUF()
 	if err == nil {
 		for _, e := range local {
@@ -124,6 +172,24 @@ func (r *Registry) Resolve(name string) (Entry, bool) {
 		}
 	} else if r.log != nil {
 		r.log.Warn("local models list failed", slog.Any("err", err))
+	}
+	dai, err := r.list4DAI()
+	if err == nil {
+		for _, e := range dai {
+			if strings.ToLower(e.Name) == key {
+				return e, true
+			}
+		}
+	}
+	if strings.HasSuffix(key, "-romanai") {
+		stem := strings.TrimSuffix(key, "-romanai")
+		if dai2, err := r.list4DAI(); err == nil {
+			for _, e := range dai2 {
+				if strings.ToLower(e.Name) == stem {
+					return e, true
+				}
+			}
+		}
 	}
 
 	if r.shareOllama && r.ollamaRoot != "" {

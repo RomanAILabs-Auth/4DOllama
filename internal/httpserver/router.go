@@ -50,6 +50,7 @@ func NewRouter(h *Handler, log *slog.Logger) http.Handler {
 	r.Get("/api/engine", h.Engine)
 	r.Get("/api/tags", h.Tags)
 	r.Get("/api/ps", h.Ps)
+	r.Post("/api/stop", h.Stop)
 	r.Post("/api/pull", h.Pull)
 	r.Post("/api/generate", h.Generate)
 	r.Post("/api/chat", h.Chat)

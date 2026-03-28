@@ -76,6 +76,7 @@ func listOllamaLibraryEntries(ollamaModelsDir string) ([]Entry, error) {
 			Path:       blobPath,
 			Size:       st.Size(),
 			ModifiedAt: st.ModTime().UTC(),
+			Format:     "gguf",
 		})
 		return nil
 	})

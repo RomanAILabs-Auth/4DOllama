@@ -83,8 +83,12 @@ func (h *Handler) Tags(w http.ResponseWriter, _ *http.Request) {
 	}
 	out := make([]ollama.Model, 0, len(list))
 	for _, e := range list {
+		format := e.Format
+		if format == "" {
+			format = "gguf"
+		}
 		var pc int64
-		if h.Run != nil && h.Run.Eng != nil {
+		if strings.EqualFold(format, "gguf") && h.Run != nil && h.Run.Eng != nil {
 			pc, _ = h.Run.Eng.GGUFParamCount(e.Path)
 		}
 		out = append(out, ollama.Model{
@@ -92,12 +96,12 @@ func (h *Handler) Tags(w http.ResponseWriter, _ *http.Request) {
 			Model:      e.Name + ":latest",
 			ModifiedAt: e.ModifiedAt.Format("2006-01-02T15:04:05.999999999Z07:00"),
 			Size:       e.Size,
-			Digest:     "sha256:fourd-" + e.Name,
+			Digest:     "sha256:fourd-" + e.Name + "-" + format,
 			Details: map[string]any{
-				"format":       "gguf",
-				"engine":       "4d",
-				"param_count":  pc,
-				"size_bytes":   e.Size,
+				"format":      format,
+				"engine":      "4d",
+				"param_count": pc,
+				"size_bytes":  e.Size,
 			},
 		})
 	}
@@ -108,6 +112,25 @@ func (h *Handler) Tags(w http.ResponseWriter, _ *http.Request) {
 func (h *Handler) Ps(w http.ResponseWriter, _ *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	_ = json.NewEncoder(w).Encode(ollama.PsResponse{Models: []any{}})
+}
+
+// Stop acknowledges a stop request (Ollama-compatible). 4dollama uses stateless generation — no process to kill yet.
+func (h *Handler) Stop(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "POST only", http.StatusMethodNotAllowed)
+		return
+	}
+	type stopReq struct {
+		Name string `json:"name"`
+	}
+	var req stopReq
+	_ = json.NewDecoder(r.Body).Decode(&req)
+	w.Header().Set("Content-Type", "application/json")
+	_ = json.NewEncoder(w).Encode(map[string]any{
+		"ok":    true,
+		"name":  strings.TrimSpace(req.Name),
+		"note":  "4dollama: no resident runner; stop is a no-op for API parity",
+	})
 }
 
 // Pull downloads a model from the Ollama registry into FOURD_MODELS (GGUF layer).

@@ -30,7 +30,7 @@ def _ns(t0: float, t1: float) -> int:
 
 def create_app() -> FastAPI:
     settings = Settings.load()
-    work_root = settings.data_dir / "work"
+    work_root = (settings.data_dir / "work").resolve()
     work_root.mkdir(parents=True, exist_ok=True)
 
     @asynccontextmanager
@@ -78,9 +78,9 @@ def create_app() -> FastAPI:
 
     def _run_kernel(model: str, prompt: str, system: str | None) -> tuple[Path, Path, int]:
         job = uuid.uuid4().hex
-        d = work_root / job
+        d = (work_root / job).resolve()
         d.mkdir(parents=True, exist_ok=True)
-        kpath = d / "kernel.r4d"
+        kpath = (d / "kernel.r4d").resolve()
         nodes = write_kernel_r4d(kpath, model, prompt, system)
         return d, kpath, nodes
 
