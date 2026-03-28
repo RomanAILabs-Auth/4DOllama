@@ -855,9 +855,37 @@ func (g *llvmGen) lookupSoaField(field string) (class string, idx int, ok bool) 
 	return "", 0, false
 }
 
+// findDefinedFunc returns an in-module function definition (not a declare stub) if already lowered.
+func (g *llvmGen) findDefinedFunc(name string) *ir.Func {
+	want := sanitizeIdent(strings.Trim(name, `"`))
+	for _, f := range g.mod.Funcs {
+		if f.Name() == want && len(f.Blocks) > 0 {
+			return f
+		}
+	}
+	return nil
+}
+
 func (g *llvmGen) lowerCall(in *MIRInst) error {
 	b := g.block
 	name := strings.Trim(in.Name, `"`)
+	if name == "abs" && len(in.Uses) == 1 {
+		v := g.resolve(in.Uses[0])
+		var out value.Value
+		if v.Type().Equal(types.Double) {
+			fabs := g.ensureDecl("fabs", types.Double, ir.NewParam("x", types.Double))
+			out = b.NewCall(fabs, v)
+		} else {
+			z := constant.NewInt(types.I64, 0)
+			neg := b.NewSub(z, v)
+			ge := b.NewICmp(enum.IPredSGE, v, z)
+			out = b.NewSelect(ge, v, neg)
+		}
+		if in.Dst != 0 {
+			g.vals[in.Dst] = out
+		}
+		return nil
+	}
 	// C ABI: void identity_v4(double *out, const double *v). MIR only has the input vec4 pointer.
 	if name == "identity_v4" && len(in.Uses) == 1 {
 		vPtr := g.pointerCast(b, g.resolve(in.Uses[0]), types.NewPointer(types.Double))
@@ -874,7 +902,12 @@ func (g *llvmGen) lowerCall(in *MIRInst) error {
 		}
 		return nil
 	}
-	callee := g.declareForCallee(name, len(in.Uses))
+	var callee *ir.Func
+	if df := g.findDefinedFunc(name); df != nil {
+		callee = df
+	} else {
+		callee = g.declareForCallee(name, len(in.Uses))
+	}
 	var argVals []value.Value
 	for i, u := range in.Uses {
 		v := g.resolve(u)
@@ -889,7 +922,11 @@ func (g *llvmGen) lowerCall(in *MIRInst) error {
 		if callee.Sig.RetType.Equal(types.Void) {
 			g.vals[in.Dst] = constant.NewInt(types.I64, 0)
 		} else {
-			g.vals[in.Dst] = res
+			out := value.Value(res)
+			if callee.Sig.RetType.Equal(types.I32) {
+				out = b.NewSExt(res, types.I64)
+			}
+			g.vals[in.Dst] = out
 		}
 	}
 	return nil
@@ -965,6 +1002,54 @@ func (g *llvmGen) declareForCallee(name string, nArgs int) *ir.Func {
 	case "mir_get_ollama_qwen_path":
 		ret = types.NewPointer(types.I8)
 		params = []*ir.Param{}
+	case "mir_romanai_gguf_path":
+		ret = types.NewPointer(types.I8)
+		params = []*ir.Param{}
+	case "mir_romanai_prompt":
+		ret = types.NewPointer(types.I8)
+		params = []*ir.Param{}
+	case "mir_romanai_cli_model_path":
+		ret = types.NewPointer(types.I8)
+		params = []*ir.Param{}
+	case "mir_romanai_gguf_manifest_log":
+		ret = types.I32
+		params = []*ir.Param{ir.NewParam("path", types.NewPointer(types.I8))}
+	case "mir_romanai_gguf_layout_load":
+		ret = types.I32
+		params = []*ir.Param{ir.NewParam("path", types.NewPointer(types.I8))}
+	case "mir_romanai_gguf_layout_free":
+		ret = types.I32
+		params = []*ir.Param{}
+	case "mir_romanai_gguf_layout_tensor_count":
+		ret = types.I64
+		params = []*ir.Param{}
+	case "mir_romanai_gguf_layout_tensor_vec4_slots":
+		ret = types.I64
+		params = []*ir.Param{ir.NewParam("idx", types.I64)}
+	case "mir_romanai_gguf_layout_tensor_rawptr":
+		ret = types.NewPointer(types.I8)
+		params = []*ir.Param{ir.NewParam("idx", types.I64)}
+	case "mir_romanai_gguf_layout_tensor_ggml_type":
+		ret = types.I64
+		params = []*ir.Param{ir.NewParam("idx", types.I64)}
+	case "mir_romanai_gguf_tensor_quant_bridge_prepare":
+		ret = types.I64
+		params = []*ir.Param{ir.NewParam("idx", types.I64)}
+	case "mir_romanai_gguf_tensor_quant_bridge_ptr":
+		ret = types.NewPointer(types.I8)
+		params = []*ir.Param{}
+	case "mir_romanai_input_line":
+		ret = types.NewPointer(types.I8)
+		params = []*ir.Param{ir.NewParam("prompt", types.NewPointer(types.I8))}
+	case "mir_romanai_decode_graph_step":
+		ret = types.I32
+		params = []*ir.Param{ir.NewParam("path", types.NewPointer(types.I8))}
+	case "mir_romanai_lattice_coupling_step":
+		ret = types.I32
+		params = []*ir.Param{ir.NewParam("path", types.NewPointer(types.I8))}
+	case "mir_romanai_vocab_print":
+		ret = types.Void
+		params = []*ir.Param{ir.NewParam("idx", types.I64)}
 	case "mir_qwen_chat_loop":
 		ret = types.I32
 		params = []*ir.Param{}

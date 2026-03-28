@@ -294,6 +294,9 @@ func (lw *mirLower) lowerStmt(st parser.Stmt) {
 			lw.lowerStmt(x)
 		}
 	case *parser.ForStmt:
+		if lw.lowerForStmtUnrolled(s) {
+			break
+		}
 		_ = lw.lowerExpr(s.Iter)
 		for _, x := range s.Body {
 			lw.lowerStmt(x)
@@ -301,6 +304,50 @@ func (lw *mirLower) lowerStmt(st parser.Stmt) {
 	default:
 		lw.emit(MIRInst{Kind: MIRComment, ImmS: fmt.Sprintf("stmt %T not lowered", st)})
 	}
+}
+
+// forRangeUnrollMax caps `for x in range(N)` compile-time unrolling (guards IR size).
+const forRangeUnrollMax = 512
+
+// lowerForStmtUnrolled expands `for x in range(N):` with constant N into N sequential bodies
+// with x bound to 0..N-1 (avoids single-shot body + undefined loop index).
+func (lw *mirLower) lowerForStmtUnrolled(s *parser.ForStmt) bool {
+	n, ok := forRangeConstN(s.Iter)
+	if !ok {
+		return false
+	}
+	for k := 0; k < n; k++ {
+		id := lw.newValue()
+		lw.emit(MIRInst{Kind: MIRConstInt, Dst: id, ImmI: int64(k), Ty: MIRTypeRef{Name: "int"}})
+		lw.lowerAssignTarget(s.Target, id)
+		for _, x := range s.Body {
+			lw.lowerStmt(x)
+		}
+	}
+	return true
+}
+
+func forRangeConstN(it parser.Expr) (int, bool) {
+	call, ok := it.(*parser.Call)
+	if !ok {
+		return 0, false
+	}
+	fn, ok := call.Func.(*parser.Name)
+	if !ok || fn.Id != "range" {
+		return 0, false
+	}
+	if len(call.Args) != 1 || len(call.Keywords) > 0 {
+		return 0, false
+	}
+	c, ok := call.Args[0].(*parser.Constant)
+	if !ok || c.Kind != parser.INT {
+		return 0, false
+	}
+	v, err := strconv.ParseInt(c.Text, 0, 64)
+	if err != nil || v < 0 || v > int64(forRangeUnrollMax) {
+		return 0, false
+	}
+	return int(v), true
 }
 
 func (lw *mirLower) lowerParFor(s *parser.ParForStmt) {
@@ -574,6 +621,80 @@ func (lw *mirLower) lowerCall(n *parser.Call) MIRValueID {
 	case "mir_get_ollama_qwen_path":
 		dst := lw.newValue()
 		lw.emit(MIRInst{Kind: MIRCall, Dst: dst, Uses: nil, Name: "mir_get_ollama_qwen_path", Ty: MIRTypeRef{Name: "str"}})
+		return dst
+	case "mir_romanai_gguf_path":
+		dst := lw.newValue()
+		lw.emit(MIRInst{Kind: MIRCall, Dst: dst, Uses: nil, Name: "mir_romanai_gguf_path", Ty: MIRTypeRef{Name: "str"}})
+		return dst
+	case "mir_romanai_prompt":
+		dst := lw.newValue()
+		lw.emit(MIRInst{Kind: MIRCall, Dst: dst, Uses: nil, Name: "mir_romanai_prompt", Ty: MIRTypeRef{Name: "str"}})
+		return dst
+	case "mir_romanai_cli_model_path":
+		dst := lw.newValue()
+		lw.emit(MIRInst{Kind: MIRCall, Dst: dst, Uses: nil, Name: "mir_romanai_cli_model_path", Ty: MIRTypeRef{Name: "str"}})
+		return dst
+	case "mir_romanai_gguf_manifest_log":
+		args := lw.lowerArgs(n)
+		dst := lw.newValue()
+		lw.emit(MIRInst{Kind: MIRCall, Dst: dst, Uses: args, Name: "mir_romanai_gguf_manifest_log", Ty: MIRTypeRef{Name: "int"}})
+		return dst
+	case "mir_romanai_gguf_layout_load":
+		args := lw.lowerArgs(n)
+		dst := lw.newValue()
+		lw.emit(MIRInst{Kind: MIRCall, Dst: dst, Uses: args, Name: "mir_romanai_gguf_layout_load", Ty: MIRTypeRef{Name: "int"}})
+		return dst
+	case "mir_romanai_gguf_layout_free":
+		dst := lw.newValue()
+		lw.emit(MIRInst{Kind: MIRCall, Dst: dst, Uses: nil, Name: "mir_romanai_gguf_layout_free", Ty: MIRTypeRef{Name: "int"}})
+		return dst
+	case "mir_romanai_gguf_layout_tensor_count":
+		dst := lw.newValue()
+		lw.emit(MIRInst{Kind: MIRCall, Dst: dst, Uses: nil, Name: "mir_romanai_gguf_layout_tensor_count", Ty: MIRTypeRef{Name: "int"}})
+		return dst
+	case "mir_romanai_gguf_layout_tensor_vec4_slots":
+		args := lw.lowerArgs(n)
+		dst := lw.newValue()
+		lw.emit(MIRInst{Kind: MIRCall, Dst: dst, Uses: args, Name: "mir_romanai_gguf_layout_tensor_vec4_slots", Ty: MIRTypeRef{Name: "int"}})
+		return dst
+	case "mir_romanai_gguf_layout_tensor_rawptr":
+		args := lw.lowerArgs(n)
+		dst := lw.newValue()
+		lw.emit(MIRInst{Kind: MIRCall, Dst: dst, Uses: args, Name: "mir_romanai_gguf_layout_tensor_rawptr", Ty: MIRTypeRef{Name: "rawptr"}})
+		return dst
+	case "mir_romanai_gguf_layout_tensor_ggml_type":
+		args := lw.lowerArgs(n)
+		dst := lw.newValue()
+		lw.emit(MIRInst{Kind: MIRCall, Dst: dst, Uses: args, Name: "mir_romanai_gguf_layout_tensor_ggml_type", Ty: MIRTypeRef{Name: "int"}})
+		return dst
+	case "mir_romanai_gguf_tensor_quant_bridge_prepare":
+		args := lw.lowerArgs(n)
+		dst := lw.newValue()
+		lw.emit(MIRInst{Kind: MIRCall, Dst: dst, Uses: args, Name: "mir_romanai_gguf_tensor_quant_bridge_prepare", Ty: MIRTypeRef{Name: "int"}})
+		return dst
+	case "mir_romanai_gguf_tensor_quant_bridge_ptr":
+		dst := lw.newValue()
+		lw.emit(MIRInst{Kind: MIRCall, Dst: dst, Uses: nil, Name: "mir_romanai_gguf_tensor_quant_bridge_ptr", Ty: MIRTypeRef{Name: "rawptr"}})
+		return dst
+	case "mir_romanai_input_line":
+		args := lw.lowerArgs(n)
+		dst := lw.newValue()
+		lw.emit(MIRInst{Kind: MIRCall, Dst: dst, Uses: args, Name: "mir_romanai_input_line", Ty: MIRTypeRef{Name: "str"}})
+		return dst
+	case "mir_romanai_decode_graph_step":
+		args := lw.lowerArgs(n)
+		dst := lw.newValue()
+		lw.emit(MIRInst{Kind: MIRCall, Dst: dst, Uses: args, Name: "mir_romanai_decode_graph_step", Ty: MIRTypeRef{Name: "int"}})
+		return dst
+	case "mir_romanai_lattice_coupling_step":
+		args := lw.lowerArgs(n)
+		dst := lw.newValue()
+		lw.emit(MIRInst{Kind: MIRCall, Dst: dst, Uses: args, Name: "mir_romanai_lattice_coupling_step", Ty: MIRTypeRef{Name: "int"}})
+		return dst
+	case "mir_romanai_vocab_print":
+		args := lw.lowerArgs(n)
+		dst := lw.newValue()
+		lw.emit(MIRInst{Kind: MIRCall, Dst: dst, Uses: args, Name: "mir_romanai_vocab_print", Ty: MIRTypeRef{Name: "none"}})
 		return dst
 	case "mir_qwen_chat_loop":
 		dst := lw.newValue()

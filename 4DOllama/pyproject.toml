@@ -3,6 +3,7 @@ name = "fourdollama"
 version = "0.1.0"
 description = "Ollama-compatible API over Roma4D (r4d) — RomanAILabs"
 readme = "README.md"
+license = { text = "Apache-2.0" }
 requires-python = ">=3.10"
 dependencies = [
   "fastapi>=0.109.0",

@@ -3,7 +3,7 @@ name = "four_d_engine"
 version = "0.2.2"
 edition = "2021"
 description = "True 4D tensor engine for 4DOllama (CPU core + FFI)"
-license = "MIT"
+license = "Apache-2.0"
 
 [lib]
 name = "four_d_engine"

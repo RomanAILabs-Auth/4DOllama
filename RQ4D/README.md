@@ -54,6 +54,9 @@ Files under `examples/*.rq4d` targeted the **previous** Cl(4,0) geometric script
 
 `github.com/RomanAILabs-Auth/RomaQuantum4D`
 
-## Copyright
+## Copyright & contact
 
-RomanAILabs — Daniel Harding
+**RomanAILabs** — *Daniel Harding*  
+Licensed under **Apache License 2.0** — see [LICENSE](LICENSE) in this directory (or the monorepo root).
+
+**Email:** [romanailabs@gmail.com](mailto:romanailabs@gmail.com) · [daniel@romanailabs.com](mailto:daniel@romanailabs.com)

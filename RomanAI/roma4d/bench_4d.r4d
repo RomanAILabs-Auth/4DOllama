@@ -1,0 +1,13 @@
+﻿def main():
+    N = 10_000_000
+    print(f"Running 4D Rotor Swarm on {N} entities...")
+
+    positions: [Vec4; N] = [Vec4(1, 2, 3, 1) for _ in range(N)]
+    rot = rotor(3.14159265 / 2, plane="xy")
+
+    start = time()
+    par for i in range(N):
+        positions[i] = positions[i] * rot
+
+    elapsed = time() - start
+    print(f"Roma4D finished in {elapsed:.3f} seconds")

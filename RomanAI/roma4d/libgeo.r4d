@@ -1,0 +1,9 @@
+# libgeo.r4d
+# Copyright RomanAILabs - Daniel Harding
+
+def magnitude_sq(v: vec4) -> float:
+    # Geometric Contraction (Inner Product) gives squared magnitude
+    return v | v
+
+def identity_v4(v: vec4) -> vec4:
+    return v

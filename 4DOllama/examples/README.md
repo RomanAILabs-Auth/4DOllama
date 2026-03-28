@@ -17,3 +17,7 @@ Files named `*.rq4d` in this folder are **placeholders or cross-links** unless c
 ## Roma4D language (`.r4d`)
 
 Geometric kernels and `par for` worldtubes belong in **`roma4d/examples/`** and compile with **`r4d`**, not Python.
+
+## Contact
+
+**RomanAILabs** — *Daniel Harding* — [romanailabs@gmail.com](mailto:romanailabs@gmail.com) · [daniel@romanailabs.com](mailto:daniel@romanailabs.com)

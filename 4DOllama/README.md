@@ -150,3 +150,8 @@ Environment: `FOURDOLLAMA_HOST`, `FOURDOLLAMA_PORT`, `FOURDOLLAMA_R4D`, `R4D_PKG
 ## License and credits
 
 See the monorepo **LICENSE** / **NOTICE** files and **RomanAILabs** attribution in source headers. **4DOllama** and **Roma4D** are related projects in this tree; trademarks apply to names and branding as described in repository license text.
+
+## Contact
+
+**RomanAILabs** — *Daniel Harding*  
+[romanailabs@gmail.com](mailto:romanailabs@gmail.com) · [daniel@romanailabs.com](mailto:daniel@romanailabs.com)

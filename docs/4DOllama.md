@@ -181,7 +181,7 @@ GitHub Actions (`.github/workflows/ci.yml`): `cargo test`, `go test` (stub), `go
 
 ## License (4DOllama / 4DEngine tooling)
 
-MIT License — see repository root and file headers for copyright lines.
+Apache License 2.0 — see repository root [LICENSE](../LICENSE) and file headers for copyright lines.
 
 ---
 

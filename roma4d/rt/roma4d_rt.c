@@ -1,3 +1,4 @@
+// Copyright RomanAILabs - Daniel Harding
 /* Roma4D CPU runtime stubs for LLVM linking (geometry, list, bump).
  *
  * Builtin constructors and print — declared by LLVM codegen with C linkage.
@@ -7,7 +8,9 @@
  */
 typedef long long roma4d_i64;
 
+#include <limits.h>
 #include <math.h>
+#include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -24,6 +27,8 @@ typedef long long roma4d_i64;
 
 int puts(const char *s);
 int system(const char *command);
+
+void mir_romanai_gguf_vocab_lookup(roma4d_i64 token_id, const char **utf8_out, size_t *byte_len_out);
 
 #ifndef M_PI
 #define M_PI 3.14159265358979323846
@@ -403,6 +408,46 @@ static void *roma4d_next_vec4_slot(void) {
 
 int bump(int x) { return x + 1; }
 
+/* MIR may emit `range(n)` for `for x in range(n):`; link symbol even when the body is unrolled. */
+void *range(roma4d_i64 n) {
+    (void)n;
+    return NULL;
+}
+
+/* Interactive REPL: prompt + one line from stdin (trimmed CR/LF). Empty on EOF. */
+const char *mir_romanai_input_line(const char *prompt) {
+    static char buf[4096];
+    if (prompt) {
+        fputs(prompt, stdout);
+        fflush(stdout);
+    }
+    if (!fgets(buf, sizeof buf, stdin)) {
+        buf[0] = '\0';
+        return buf;
+    }
+    {
+        size_t n = strlen(buf);
+        while (n > 0 && (buf[n - 1] == '\n' || buf[n - 1] == '\r')) {
+            buf[--n] = '\0';
+        }
+    }
+    return buf;
+}
+
+/* Pass 1: print UTF-8 token from tokenizer.ggml.tokens in the loaded GGUF (romanai_gguf_layout.c). */
+void mir_romanai_vocab_print(roma4d_i64 idx) {
+    const char *u8;
+    size_t n;
+    mir_romanai_gguf_vocab_lookup(idx, &u8, &n);
+    if (u8 && n > 0) {
+        fwrite(u8, 1, n, stdout);
+    } else {
+        fputc('?', stdout);
+    }
+    fputc(' ', stdout);
+    fflush(stdout);
+}
+
 void *vec4(double a0, double a1, double a2, double a3) {
     double *p = (double *)roma4d_next_vec4_slot();
     p[0] = a0;
@@ -576,6 +621,441 @@ void *mir_mmap_gguf(const char *path) {
         return p;
     }
 #endif
+}
+
+/* ---- RomanAI GGUF runner (env: ROMANAI_GGUF, ROMANAI_PROMPT) ---------------- */
+
+static char g_romanai_gguf_buf[4096];
+static char g_romanai_prompt_buf[16384];
+static const char g_romanai_gguf_unset[] = "not_set";
+static const char g_romanai_prompt_empty[] = "";
+
+const char *mir_romanai_gguf_path(void) {
+    const char *p = getenv("ROMANAI_GGUF");
+    size_t n;
+    if (!p || !*p) {
+        return g_romanai_gguf_unset;
+    }
+    n = strlen(p);
+    if (n >= sizeof g_romanai_gguf_buf) {
+        n = sizeof g_romanai_gguf_buf - 1;
+    }
+    memcpy(g_romanai_gguf_buf, p, n);
+    g_romanai_gguf_buf[n] = '\0';
+    return g_romanai_gguf_buf;
+}
+
+const char *mir_romanai_prompt(void) {
+    const char *p = getenv("ROMANAI_PROMPT");
+    size_t n;
+    if (!p || !*p) {
+        return g_romanai_prompt_empty;
+    }
+    n = strlen(p);
+    if (n >= sizeof g_romanai_prompt_buf) {
+        n = sizeof g_romanai_prompt_buf - 1;
+    }
+    memcpy(g_romanai_prompt_buf, p, n);
+    g_romanai_prompt_buf[n] = '\0';
+    return g_romanai_prompt_buf;
+}
+
+static char g_romanai_cli_model_buf[4096];
+
+/* Host sets ROMANAI_CLI_MODEL to the .gguf path for `romanai run <file>`. */
+const char *mir_romanai_cli_model_path(void) {
+    const char *p = getenv("ROMANAI_CLI_MODEL");
+    size_t n;
+    if (!p || !*p) {
+        return g_romanai_prompt_empty;
+    }
+    n = strlen(p);
+    if (n >= sizeof g_romanai_cli_model_buf) {
+        n = sizeof g_romanai_cli_model_buf - 1;
+    }
+    memcpy(g_romanai_cli_model_buf, p, n);
+    g_romanai_cli_model_buf[n] = '\0';
+    return g_romanai_cli_model_buf;
+}
+
+/* ---- RomanAI Pass 2: GGUF manifest scan (stderr, ROMANAI_GGUF_MANIFEST prefix) ---------- */
+
+static int romanai_fread_u32(FILE *f, uint32_t *o) {
+    unsigned char b[4];
+    if (fread(b, 1, 4, f) != 4) {
+        return -1;
+    }
+    *o = (uint32_t)b[0] | ((uint32_t)b[1] << 8) | ((uint32_t)b[2] << 16) | ((uint32_t)b[3] << 24);
+    return 0;
+}
+
+static int romanai_fread_u64(FILE *f, uint64_t *o) {
+    unsigned char b[8];
+    if (fread(b, 1, 8, f) != 8) {
+        return -1;
+    }
+    *o = (uint64_t)b[0] | ((uint64_t)b[1] << 8) | ((uint64_t)b[2] << 16) | ((uint64_t)b[3] << 24)
+       | ((uint64_t)b[4] << 32) | ((uint64_t)b[5] << 40) | ((uint64_t)b[6] << 48) | ((uint64_t)b[7] << 56);
+    return 0;
+}
+
+static int romanai_skip_gguf_string(FILE *f) {
+    uint64_t n;
+    unsigned char chunk[4096];
+    if (romanai_fread_u64(f, &n) != 0) {
+        return -1;
+    }
+    if (n > (1ull << 30)) {
+        return -1;
+    }
+    while (n > 0) {
+        size_t k = n > sizeof chunk ? sizeof chunk : (size_t)n;
+        if (fread(chunk, 1, k, f) != k) {
+            return -1;
+        }
+        n -= k;
+    }
+    return 0;
+}
+
+static int romanai_read_gguf_string_heap(FILE *f, char **out) {
+    uint64_t n;
+    char *b;
+    if (romanai_fread_u64(f, &n) != 0) {
+        return -1;
+    }
+    if (n > (1ull << 30)) {
+        return -1;
+    }
+    b = (char *)malloc((size_t)n + 1);
+    if (!b) {
+        return -1;
+    }
+    if (n > 0 && fread(b, 1, (size_t)n, f) != (size_t)n) {
+        free(b);
+        return -1;
+    }
+    b[n] = '\0';
+    *out = b;
+    return 0;
+}
+
+static void romanai_sanitize_one_line(char *s) {
+    for (; *s; s++) {
+        if (*s == '\n' || *s == '\r' || *s == '\t') {
+            *s = ' ';
+        }
+    }
+}
+
+static int romanai_skip_gguf_value(FILE *f, uint32_t ty);
+
+static int romanai_skip_gguf_value(FILE *f, uint32_t ty) {
+    uint8_t u8;
+    int8_t i8;
+    uint16_t u16;
+    int16_t i16;
+    uint32_t u32;
+    float f32;
+    uint8_t bl;
+    uint64_t u64;
+    double f64;
+    uint32_t et;
+    uint64_t ne;
+    uint64_t i;
+
+    switch (ty) {
+    case 0:
+        return fread(&u8, 1, 1, f) == 1 ? 0 : -1;
+    case 1:
+        return fread(&i8, 1, 1, f) == 1 ? 0 : -1;
+    case 2:
+        return fread(&u16, 1, 2, f) == 2 ? 0 : -1;
+    case 3:
+        return fread(&i16, 1, 2, f) == 2 ? 0 : -1;
+    case 4:
+        return romanai_fread_u32(f, &u32);
+    case 5:
+        return romanai_fread_u32(f, &u32);
+    case 6:
+        return fread(&f32, 1, 4, f) == 4 ? 0 : -1;
+    case 7:
+        return fread(&bl, 1, 1, f) == 1 ? 0 : -1;
+    case 8:
+        return romanai_skip_gguf_string(f);
+    case 9:
+        if (romanai_fread_u32(f, &et) != 0) {
+            return -1;
+        }
+        if (romanai_fread_u64(f, &ne) != 0) {
+            return -1;
+        }
+        for (i = 0; i < ne; i++) {
+            if (romanai_skip_gguf_value(f, et) != 0) {
+                return -1;
+            }
+        }
+        return 0;
+    case 10:
+        return romanai_fread_u64(f, &u64);
+    case 11:
+        return romanai_fread_u64(f, &u64);
+    case 12:
+        return fread(&f64, 1, 8, f) == 8 ? 0 : -1;
+    default:
+        return -1;
+    }
+}
+
+static const char *romanai_ggml_type_name(uint32_t t) {
+    switch (t) {
+    case 0:
+        return "F32";
+    case 1:
+        return "F16";
+    case 2:
+        return "Q4_0";
+    case 3:
+        return "Q4_1";
+    case 6:
+        return "Q5_0";
+    case 7:
+        return "Q5_1";
+    case 8:
+        return "Q8_0";
+    case 9:
+        return "Q8_1";
+    case 10:
+        return "Q2_K";
+    case 11:
+        return "Q3_K";
+    case 12:
+        return "Q4_K";
+    case 13:
+        return "Q5_K";
+    case 14:
+        return "Q6_K";
+    case 15:
+        return "Q8_K";
+    case 30:
+        return "BF16";
+    default:
+        return "?";
+    }
+}
+
+static int romanai_shape_n_elems(uint32_t ndims, const uint64_t *dims, int64_t *out) {
+    int64_t n = 1;
+    uint32_t i;
+    for (i = 0; i < ndims; i++) {
+        uint64_t d = dims[i];
+        if (d == 0) {
+            *out = 0;
+            return 0;
+        }
+        if ((uint64_t)n > (uint64_t)LLONG_MAX / d) {
+            return -1;
+        }
+        n *= (int64_t)d;
+    }
+    *out = n;
+    return 0;
+}
+
+/*
+ * Logs GGUF v2–v4 header + tensor index to stderr.
+ * Lines: ROMANAI_GGUF_MANIFEST <kind> <tab-separated fields>
+ * Env: ROMANAI_GGUF_MANIFEST_MAX — max tensor lines (default 1024); 0 = no limit.
+ * Returns 0 ok, 1 open/stat fail, 2 bad magic/version, 3 parse error.
+ */
+int32_t mir_romanai_gguf_manifest_log(const char *path) {
+    FILE *f;
+    char magic[4];
+    uint32_t ver;
+    uint64_t tensor_count;
+    uint64_t kv_count;
+    uint64_t ti;
+    uint64_t ki;
+    char arch[512];
+    long file_size;
+    long pos_after_tensors;
+    uint64_t data_base;
+    unsigned long max_tensors = 1024;
+    const char *max_env;
+
+    if (!path || !*path || strcmp(path, "not_set") == 0) {
+        return 1;
+    }
+    max_env = getenv("ROMANAI_GGUF_MANIFEST_MAX");
+    if (max_env && *max_env) {
+        char *end = NULL;
+        unsigned long v = strtoul(max_env, &end, 10);
+        if (end != max_env) {
+            max_tensors = v;
+        }
+    }
+
+    f = fopen(path, "rb");
+    if (!f) {
+        fprintf(stderr, "ROMANAI_GGUF_MANIFEST\terror\tfopen_failed\tpath=%s\n", path);
+        return 1;
+    }
+    if (fseek(f, 0, SEEK_END) != 0) {
+        fclose(f);
+        return 3;
+    }
+    file_size = ftell(f);
+    if (file_size < 0 || fseek(f, 0, SEEK_SET) != 0) {
+        fclose(f);
+        return 3;
+    }
+
+    if (fread(magic, 1, 4, f) != 4 || memcmp(magic, "GGUF", 4) != 0) {
+        fprintf(stderr, "ROMANAI_GGUF_MANIFEST\terror\tbad_magic\n");
+        fclose(f);
+        return 2;
+    }
+    if (romanai_fread_u32(f, &ver) != 0 || ver < 2 || ver > 4) {
+        fprintf(stderr, "ROMANAI_GGUF_MANIFEST\terror\tbad_version\tv=%u\n", ver);
+        fclose(f);
+        return 2;
+    }
+    if (romanai_fread_u64(f, &tensor_count) != 0 || romanai_fread_u64(f, &kv_count) != 0) {
+        fclose(f);
+        return 3;
+    }
+
+    arch[0] = '\0';
+    for (ki = 0; ki < kv_count; ki++) {
+        char *key = NULL;
+        uint32_t ty;
+        if (romanai_read_gguf_string_heap(f, &key) != 0) {
+            fclose(f);
+            return 3;
+        }
+        if (romanai_fread_u32(f, &ty) != 0) {
+            free(key);
+            fclose(f);
+            return 3;
+        }
+        if (ty == 8 && strcmp(key, "general.architecture") == 0) {
+            char *val = NULL;
+            if (romanai_read_gguf_string_heap(f, &val) != 0) {
+                free(key);
+                fclose(f);
+                return 3;
+            }
+            strncpy(arch, val, sizeof arch - 1);
+            arch[sizeof arch - 1] = '\0';
+            romanai_sanitize_one_line(arch);
+            free(val);
+        } else {
+            if (romanai_skip_gguf_value(f, ty) != 0) {
+                free(key);
+                fclose(f);
+                return 3;
+            }
+        }
+        free(key);
+    }
+
+    fprintf(stderr,
+            "ROMANAI_GGUF_MANIFEST\theader\tgguf_version=%u\ttensor_count=%llu\tkv_count=%llu\tarchitecture=%s\n",
+            ver, (unsigned long long)tensor_count, (unsigned long long)kv_count, arch[0] ? arch : "");
+    fflush(stderr);
+
+    {
+        int trunc_printed = 0;
+        for (ti = 0; ti < tensor_count; ti++) {
+            char *name = NULL;
+            uint32_t ndims;
+            uint64_t shape[64];
+            uint32_t d;
+            uint32_t ggml_type;
+            uint64_t offset;
+            int64_t nelems;
+            char shape_buf[512];
+            size_t sb_off;
+            const char *tnm;
+
+            if (romanai_read_gguf_string_heap(f, &name) != 0) {
+                fclose(f);
+                return 3;
+            }
+            if (romanai_fread_u32(f, &ndims) != 0) {
+                free(name);
+                fclose(f);
+                return 3;
+            }
+            if (ndims > 64) {
+                free(name);
+                fclose(f);
+                return 3;
+            }
+            for (d = 0; d < ndims; d++) {
+                if (romanai_fread_u64(f, &shape[d]) != 0) {
+                    free(name);
+                    fclose(f);
+                    return 3;
+                }
+            }
+            if (romanai_fread_u32(f, &ggml_type) != 0 || romanai_fread_u64(f, &offset) != 0) {
+                free(name);
+                fclose(f);
+                return 3;
+            }
+
+            if (max_tensors > 0 && ti >= max_tensors) {
+                if (!trunc_printed) {
+                    fprintf(stderr, "ROMANAI_GGUF_MANIFEST\ttensor_truncated\tlogged=%lu\ttotal=%llu\n",
+                            max_tensors, (unsigned long long)tensor_count);
+                    fflush(stderr);
+                    trunc_printed = 1;
+                }
+                free(name);
+                continue;
+            }
+
+            shape_buf[0] = '\0';
+            sb_off = 0;
+            for (d = 0; d < ndims && sb_off < sizeof shape_buf; d++) {
+                int nw = snprintf(shape_buf + sb_off, sizeof shape_buf - sb_off, d ? ",%llu" : "%llu",
+                                  (unsigned long long)shape[d]);
+                if (nw < 0 || (size_t)nw >= sizeof shape_buf - sb_off) {
+                    break;
+                }
+                sb_off += (size_t)nw;
+            }
+
+            if (romanai_shape_n_elems(ndims, shape, &nelems) != 0) {
+                nelems = -1;
+            }
+
+            romanai_sanitize_one_line(name);
+            tnm = romanai_ggml_type_name(ggml_type);
+            fprintf(stderr,
+                    "ROMANAI_GGUF_MANIFEST\ttensor\ti=%llu\tname=%s\tndims=%u\tshape=%s\tggml_type=%u\tggml_type_name=%s\toffset=%llu\tnelems=%lld\n",
+                    (unsigned long long)ti, name, ndims, shape_buf, ggml_type,
+                    strcmp(tnm, "?") == 0 ? "OTHER" : tnm, (unsigned long long)offset, (long long)nelems);
+            fflush(stderr);
+            free(name);
+        }
+    }
+
+    pos_after_tensors = ftell(f);
+    if (pos_after_tensors < 0) {
+        fclose(f);
+        return 3;
+    }
+    data_base = (uint64_t)(((pos_after_tensors + 31L) / 32L) * 32L);
+
+    fprintf(stderr,
+            "ROMANAI_GGUF_MANIFEST\tfooter\tdata_base=%llu\tfile_size=%ld\ttensors_indexed=%llu\n",
+            (unsigned long long)data_base, file_size, (unsigned long long)tensor_count);
+    fflush(stderr);
+
+    fclose(f);
+    return 0;
 }
 
 static char g_qwen_blob_path[1024];

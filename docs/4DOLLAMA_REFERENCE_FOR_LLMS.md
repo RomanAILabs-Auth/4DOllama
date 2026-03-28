@@ -112,6 +112,7 @@ For **OpenAI-style** clients, use **`POST /v1/chat/completions`** on the same po
 - **`docs/ARCHITECTURE.md`** — Layers, honesty, roadmap.
 - **`docs/INSTALL_4DOLLAMA.md`** — Step-by-step install and troubleshooting.
 - **`4DOllama/README.md`** — Optional Python **`fourdollama`** package.
+- **`RomanAI/README.md`** — **RomanAI** R4D GGUF runner (`romanai run …`); sources under **`RomanAI/`**, toolchain still **`roma4d/`**.
 
 ---
 

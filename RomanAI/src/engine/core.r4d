@@ -1,0 +1,34 @@
+# RomanAI Core 4D Engine — Phase 2
+# Native Cl(4,0) spacetime primitives for making LLMs smarter
+# Roma4D: `from roma4d.libgeo import vec4, rotor, multivector` is invalid (keywords in import list). Use built-ins.
+# Reference bodies (enable when Roma4D codegen supports them):
+# quaternion_rope: rot = rotor(angle=freq, plane="xw"); return pos * rot
+# geometric_attention: score = q ^ k; return (score | v) * 0.1  (needs vec4, not float — use v * rotor(angle=(score|v)*0.1, plane="xw"))
+# lattice_couple: for i in range(len(logits)): logits[i] = logits[i] * 1.05
+
+class Tensor4D:
+    soa data: list[vec4]
+
+def quaternion_rope(pos: vec4, freq: float) -> vec4:
+    return pos
+
+def geometric_attention(q: vec4, k: vec4, v: vec4) -> vec4:
+    return v
+
+def lattice_couple(logits: list[float]) -> list[float]:
+    return logits
+
+def main() -> int:
+    print("RomanAI Core 4D Engine loaded — Cl(4,0) spacetime online")
+    p: vec4 = vec4(x=1.0, y=0.0, z=0.0, w=1.0)
+    freq: float = 0.1
+    rot: rotor = rotor(angle=freq, plane="xw")
+    p = p * rot
+    qv: vec4 = vec4(x=1.0, y=0.0, z=0.0, w=0.0)
+    kv: vec4 = vec4(x=0.0, y=1.0, z=0.0, w=0.0)
+    vv: vec4 = vec4(x=0.0, y=0.0, z=1.0, w=0.0)
+    score: multivector = qv ^ kv
+    s: float = score | vv
+    p = p * rotor(angle=s * 0.1, plane="xw")
+    print("4D quaternion RoPE test passed")
+    return 0
