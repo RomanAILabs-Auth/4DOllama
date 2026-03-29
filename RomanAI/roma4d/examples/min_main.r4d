@@ -1,4 +1,0 @@
-# Minimal native entry for Pass 6 smoke tests (no imports, no runtime stubs required).
-
-def main() -> int:
-    return 42
